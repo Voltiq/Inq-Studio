@@ -1,0 +1,468 @@
+/* ==========================================================================
+   Form controls: inset wells with a focus halo
+   ========================================================================== */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-subtle);
+}
+
+.field-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-050);
+  font-size: 0.71875rem;
+  line-height: var(--line-height-small);
+  color: var(--text-subtlest);
+}
+
+.field-message svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.field-message.is-error {
+  color: var(--text-danger);
+}
+
+.textfield {
+  display: flex;
+  align-items: center;
+  gap: var(--space-100);
+  height: 2.25rem;
+  padding: 0 0.6875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: var(--inset-lo);
+  cursor: text;
+  transition:
+    border-color var(--duration-medium) var(--ease),
+    box-shadow var(--duration-medium) var(--ease);
+}
+
+.textfield.is-compact {
+  height: 2rem;
+  border-radius: var(--radius-medium);
+}
+
+.textfield:hover {
+  border-color: var(--line-2);
+}
+
+.textfield:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+
+.textfield.is-invalid {
+  border-color: color-mix(in oklab, var(--danger) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 16%, transparent);
+}
+
+.textfield.is-disabled {
+  opacity: 0.55;
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.textfield-icon {
+  flex: none;
+  color: var(--icon-subtlest);
+}
+
+.textfield-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-weight: var(--font-weight-medium);
+}
+
+.textfield-input.is-mono {
+  font-family: var(--font-code);
+  font-size: 0.78125rem;
+  font-weight: var(--font-weight-regular);
+}
+
+.textfield-input::placeholder {
+  color: var(--text-subtlest);
+  font-weight: var(--font-weight-regular);
+}
+
+.textfield-action {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-right: calc(var(--space-050) * -1);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--icon-subtle);
+}
+
+.textfield-action:hover {
+  background: var(--wash-2);
+  color: var(--icon);
+}
+
+/* ----- Select ----- */
+
+.select {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.select select {
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 var(--space-400) 0 0.6875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  box-shadow: var(--inset-lo);
+  appearance: none;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-medium) var(--ease),
+    box-shadow var(--duration-medium) var(--ease);
+}
+
+.select select:hover {
+  border-color: var(--line-2);
+}
+
+.select select:focus-visible {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+
+.select select option {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.select-chevron {
+  position: absolute;
+  right: 0.625rem;
+  color: var(--icon-subtlest);
+  pointer-events: none;
+}
+
+/* ----- Toggle: switches stretch before they snap ----- */
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-300);
+}
+
+.toggle-row.is-disabled {
+  opacity: 0.55;
+}
+
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-025);
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+
+.toggle-label {
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.toggle-description {
+  font-size: 0.71875rem;
+  line-height: var(--line-height-small);
+  color: var(--text-subtlest);
+}
+
+.toggle {
+  position: relative;
+  flex: none;
+  width: 2.25rem;
+  height: 1.25rem;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-4);
+  box-shadow: var(--inset-lo);
+  transition:
+    background var(--duration-medium) var(--ease),
+    box-shadow var(--duration-medium) var(--ease);
+}
+
+.toggle:hover {
+  background: color-mix(in oklab, var(--surface-4), var(--text-1) 6%);
+}
+
+.toggle.is-checked,
+.toggle.is-checked:hover {
+  background: var(--accent-fill);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 4px 12px -4px var(--accent);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(#fff, #e9eaf0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition:
+    transform var(--duration-medium) var(--spring),
+    width var(--duration-xshort) var(--ease);
+}
+
+.toggle:active:not(:disabled) .toggle-thumb {
+  width: 18px;
+}
+
+.toggle.is-checked .toggle-thumb {
+  transform: translateX(16px);
+}
+
+.toggle.is-checked:active:not(:disabled) .toggle-thumb {
+  transform: translateX(12px);
+}
+
+.toggle-glyph {
+  display: none;
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+}
+
+/* ----- Checkbox ----- */
+
+.checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 1.5rem;
+  cursor: pointer;
+}
+
+.checkbox.is-disabled {
+  cursor: not-allowed;
+  color: var(--text-disabled);
+}
+
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  left: -3px;
+  margin: 0;
+  cursor: inherit;
+}
+
+.checkbox-box {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface-2);
+  box-shadow: var(--inset-lo);
+  color: #fff;
+  transition:
+    background var(--duration-xshort) var(--ease),
+    border-color var(--duration-xshort) var(--ease),
+    box-shadow var(--duration-medium) var(--ease);
+}
+
+.checkbox-box svg {
+  animation: tick var(--duration-medium) var(--spring);
+}
+
+@keyframes tick {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+.checkbox:hover .checkbox-box {
+  border-color: color-mix(in oklab, var(--text-1) 22%, transparent);
+}
+
+.checkbox input:checked + .checkbox-box,
+.checkbox input:indeterminate + .checkbox-box,
+.checkbox:hover input:checked + .checkbox-box,
+.checkbox:hover input:indeterminate + .checkbox-box {
+  border-color: transparent;
+  background: var(--accent-fill);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 4px 10px -4px var(--accent);
+}
+
+.checkbox input:focus-visible + .checkbox-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.checkbox-label:empty {
+  display: none;
+}
+
+/* ----- Segmented: an inset well with a raised pill ----- */
+
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: var(--inset-lo);
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-075);
+  height: 1.75rem;
+  padding: 0 var(--space-150);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 0.78125rem;
+  font-weight: var(--font-weight-medium);
+  transition:
+    background-color var(--duration-xshort) var(--ease),
+    color var(--duration-xshort) var(--ease),
+    box-shadow var(--duration-xshort) var(--ease);
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment.is-selected {
+  color: var(--text);
+  background: var(--seg-on);
+  box-shadow: var(--sh-1), var(--inset-hi);
+}
+
+.segment.is-selected svg {
+  color: var(--accent-text);
+}
+
+.segment:focus-visible {
+  outline-offset: 0;
+}
+
+/* ----- Radio list ----- */
+
+.radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-050);
+}
+
+.radio-list > legend {
+  margin-bottom: var(--space-100);
+}
+
+.radio {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: var(--space-050) 0;
+  cursor: pointer;
+}
+
+.radio input {
+  position: absolute;
+  opacity: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  left: -3px;
+  cursor: pointer;
+}
+
+.radio-dot {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 1px;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: var(--inset-lo);
+  transition:
+    box-shadow var(--duration-medium) var(--spring),
+    border-color var(--duration-xshort) var(--ease);
+}
+
+.radio:hover .radio-dot {
+  border-color: color-mix(in oklab, var(--text-1) 22%, transparent);
+}
+
+.radio input:checked + .radio-dot {
+  border-color: transparent;
+  background: #fff;
+  box-shadow:
+    inset 0 0 0 5px var(--accent),
+    0 4px 10px -4px var(--accent);
+}
+
+.radio input:focus-visible + .radio-dot {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.radio-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.radio-label {
+  font-weight: var(--font-weight-medium);
+}
+
+.radio-description {
+  font-size: 0.71875rem;
+  line-height: var(--line-height-small);
+  color: var(--text-subtlest);
+}
+

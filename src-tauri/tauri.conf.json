@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Inq Studio",
+  "version": "0.1.0",
+  "identifier": "com.voltiq.inq-studio",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Inq Studio",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 980,
+        "minHeight": 620,
+        "center": true,
+        "visible": false,
+        "dragDropEnabled": true,
+        "backgroundColor": "#0D0E11"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Voltiq",
+    "copyright": "© 2026 Voltiq",
+    "category": "Productivity",
+    "shortDescription": "A professional PDF viewer and editor",
+    "longDescription": "Inq Studio views, edits and organises PDF documents. Edit text in the fonts the document already uses, add text, mark up pages with highlights, notes and ink, and rearrange, insert or extract pages.",
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "name": "PDF Document",
+        "description": "PDF document",
+        "role": "Editor",
+        "mimeType": "application/pdf"
+      }
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}
