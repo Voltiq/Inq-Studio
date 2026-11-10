@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Info, Pencil, Save, Trash2 } from "lucide-react";
+import { Info, Pencil, Pilcrow, Save, Trash2 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Lozenge } from "./ui/Feedback";
 import { Select, TextField, Toggle } from "./ui/Field";
@@ -46,17 +46,18 @@ export function Inspector({
   onSettings: (s: Settings) => void;
   pageSize: { w: number; h: number } | null;
   onEditLine: (edit: LineEdit) => void;
-  onStartEditing: () => void;
+  onStartEditing: (what: "line" | "block") => void;
   onDeleteAnnot: () => void;
   onSaveMeta: (m: Meta) => void;
 }) {
   let body: React.ReactNode;
-  if (selection?.kind === "line") {
+  if (selection?.kind === "lines") {
     body = (
-      <LineInspector
+      <LinesInspector
         docId={docId}
         selection={selection}
         fonts={fonts}
+        catalog={catalog}
         units={settings.units}
         onEdit={onEditLine}
         onStartEditing={onStartEditing}
@@ -90,29 +91,61 @@ export function Inspector({
 
 // ---------------------------------------------------------------------------
 
-function LineInspector({
+function useFontOptions(fonts: FontSummary[] | null, catalog: FontCatalog | null) {
+  return useMemo(() => {
+    const out: { value: string; label: string }[] = [];
+    for (const f of fonts ?? []) {
+      if (f.editable) out.push({ value: `doc:${f.key}`, label: `Document · ${fontLabel(f)}${f.subset ? " (subset)" : ""}` });
+    }
+    for (const fam of catalog?.families ?? []) out.push({ value: `sys:${fam}`, label: `Installed · ${fam}` });
+    for (const s of catalog?.standard ?? []) out.push({ value: `std:${s}`, label: `Standard · ${s}` });
+    return out;
+  }, [fonts, catalog]);
+}
+
+function parseChoice(v: string, bold = false, italic = false): FontChoice {
+  const [kind, ...rest] = v.split(":");
+  const name = rest.join(":");
+  if (kind === "doc") return { kind: "document", key: name };
+  if (kind === "sys") return { kind: "system", family: name, bold, italic };
+  return { kind: "standard", name };
+}
+
+function LinesInspector({
   docId,
   selection,
   fonts,
+  catalog,
   units,
   onEdit,
   onStartEditing,
 }: {
   docId: number;
-  selection: Extract<Selection, { kind: "line" }>;
+  selection: Extract<Selection, { kind: "lines" }>;
   fonts: FontSummary[] | null;
+  catalog: FontCatalog | null;
   units: Settings["units"];
   onEdit: (e: LineEdit) => void;
-  onStartEditing: () => void;
+  onStartEditing: (what: "line" | "block") => void;
 }) {
-  const l = selection.line;
+  const many = selection.lines.length > 1;
+  const l = selection.lines[0];
+  const editable = selection.lines.every((x) => x.editable);
   const font = fonts?.find((f) => f.key === l.fontKey) ?? null;
+  const block = selection.block;
+  const inParagraph = !many && block && block.lines.length > 1;
   const [stack, setStack] = useState(`"${l.family}", sans-serif`);
-  const [size, setSize] = useState(l.size.toFixed(2).replace(/\.?0+$/, ""));
+  const sizeText = (v: number) => v.toFixed(2).replace(/\.?0+$/, "");
+  const [size, setSize] = useState(sizeText(l.size));
   const [text, setText] = useState(l.text);
+  const options = useFontOptions(fonts, catalog);
+  const [fontPick, setFontPick] = useState("");
+  const [bold, setBold] = useState(false);
+  const [italic, setItalic] = useState(false);
   useEffect(() => {
-    setSize(l.size.toFixed(2).replace(/\.?0+$/, ""));
+    setSize(sizeText(l.size));
     setText(l.text);
+    setFontPick("");
   }, [l]);
   useEffect(() => {
     if (!font) return;
@@ -131,129 +164,198 @@ function LineInspector({
   return (
     <>
       <section className="side-section">
-        <span className="eyebrow">Text line</span>
-        <div
-          className="line-preview"
-          style={{
-            fontFamily: stack,
-            fontWeight: l.bold ? 700 : 400,
-            fontStyle: l.italic ? "italic" : undefined,
-            color: rgbToHex(l.color),
-          }}
-        >
-          {l.text}
-        </div>
-        {l.note && (
+        <span className="eyebrow">{many ? `${selection.lines.length} lines` : inParagraph ? "Line in a paragraph" : "Text line"}</span>
+        {!many ? (
+          <div
+            className="line-preview"
+            style={{ fontFamily: stack, fontWeight: l.bold ? 700 : 400, fontStyle: l.italic ? "italic" : undefined, color: rgbToHex(l.color) }}
+          >
+            {l.text}
+          </div>
+        ) : (
+          <div className="line-preview" style={{ fontSize: 13, fontFamily: "var(--font-body)" }}>
+            {selection.lines.slice(0, 6).map((x) => (
+              <div key={x.id} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {x.text}
+              </div>
+            ))}
+            {selection.lines.length > 6 && <div className="is-muted">and {selection.lines.length - 6} more</div>}
+          </div>
+        )}
+        {l.note && !many && (
           <div className="notice is-warning" style={{ marginTop: 8 }}>
             <Info size={14} aria-hidden="true" />
             <span>{l.note}</span>
           </div>
         )}
-        {l.editable && (
-          <>
-            <div style={{ marginTop: 12 }}>
-              <TextField
-                label="Text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && text !== l.text) onEdit({ text });
-                }}
-              />
-            </div>
-            <div className="inspector-actions">
+        {editable && !many && (
+          <div style={{ marginTop: 12 }}>
+            <TextField
+              label="Text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && text !== l.text) onEdit({ text });
+              }}
+            />
+          </div>
+        )}
+        {editable && (
+          <div className="inspector-actions">
+            {!many && (
               <Button appearance="primary" spacing="compact" iconBefore={Save} disabled={text === l.text} onClick={() => onEdit({ text })}>
                 Apply
               </Button>
-              <Button spacing="compact" iconBefore={Pencil} onClick={onStartEditing} shortcut="Enter">
-                Edit on page
+            )}
+            {!many && (
+              <Button spacing="compact" iconBefore={Pencil} onClick={() => onStartEditing("line")}>
+                Edit line
               </Button>
-              <Button appearance="subtle" spacing="compact" iconBefore={Trash2} onClick={() => onEdit({ delete: true })} shortcut="Del">
-                Delete
+            )}
+            {inParagraph && (
+              <Button spacing="compact" iconBefore={Pilcrow} onClick={() => onStartEditing("block")} shortcut="Enter">
+                Edit paragraph
               </Button>
-            </div>
-          </>
+            )}
+            <Button appearance="subtle" spacing="compact" iconBefore={Trash2} onClick={() => onEdit({ delete: true })} shortcut="Del">
+              Delete
+            </Button>
+          </div>
         )}
       </section>
 
-      <section className="side-section">
-        <span className="eyebrow">Font</span>
-        <dl className="props">
-          <dt>Family</dt>
-          <dd>{font ? fontLabel(font) : l.family}</dd>
-          <dt>PostScript</dt>
-          <dd className="is-mono">{l.fontName}</dd>
-          {font && (
-            <>
-              <dt>Type</dt>
-              <dd>
-                {font.kind} {font.subset && <Lozenge appearance="information">subset</Lozenge>}
-              </dd>
-              <dt>Glyphs</dt>
-              <dd>{font.glyphs.toLocaleString()}</dd>
-              <dt>Installed</dt>
-              <dd>{font.systemMatch ?? "no"}</dd>
-            </>
-          )}
-        </dl>
-      </section>
-
-      {l.editable && (
+      {!many && (
         <section className="side-section">
-          <span className="eyebrow">Style</span>
-          <div className="row">
-            <TextField
-              label="Size (pt)"
-              value={size}
-              mono
-              inputMode="decimal"
-              onChange={(e) => setSize(e.target.value)}
-              onBlur={applySize}
-              onKeyDown={(e) => e.key === "Enter" && applySize()}
-            />
-            <label className="color-field">
-              <span className="field-label">Colour</span>
-              <input
-                type="color"
-                className="color-input"
-                defaultValue={rgbToHex(l.color)}
-                key={rgbToHex(l.color)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  window.clearTimeout((window as unknown as { __inqColor?: number }).__inqColor);
-                  (window as unknown as { __inqColor?: number }).__inqColor = window.setTimeout(
-                    () => onEdit({ color: hexToRgb(v) }),
-                    350,
-                  );
-                }}
-              />
-            </label>
-          </div>
-          <p className="is-muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Drawn at {l.em.toFixed(2)} pt{Math.abs(l.angle) > 0.5 ? `, rotated ${l.angle.toFixed(0)}°` : ""}.
-          </p>
+          <span className="eyebrow">Fonts in this line</span>
+          {l.spans.length > 1 ? (
+            <div className="spans">
+              {l.spans.map((s, i) => (
+                <div key={i} className="span-row">
+                  <span className="span-swatch" style={{ background: rgbToHex(s.color) }} />
+                  <span className="span-text">{[...l.text].slice(s.start, s.end).join("")}</span>
+                  <span className="is-muted">
+                    {s.family}
+                    {s.bold ? " Bold" : ""}
+                    {s.italic ? " Italic" : ""} · {s.em.toFixed(1)}
+                  </span>
+                </div>
+              ))}
+              <p className="is-muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Edits keep each word’s style: new text takes the style of the text it replaces.
+              </p>
+            </div>
+          ) : (
+            <dl className="props" style={{ marginTop: 8 }}>
+              <dt>Family</dt>
+              <dd>{font ? fontLabel(font) : l.family}</dd>
+              <dt>PostScript</dt>
+              <dd className="is-mono">{l.fontName}</dd>
+              {font && (
+                <>
+                  <dt>Type</dt>
+                  <dd>
+                    {font.kind} {font.subset && <Lozenge appearance="information">subset</Lozenge>}
+                  </dd>
+                  <dt>Glyphs</dt>
+                  <dd>{font.glyphs.toLocaleString()}</dd>
+                  <dt>Installed</dt>
+                  <dd>{font.systemMatch ?? "no"}</dd>
+                </>
+              )}
+            </dl>
+          )}
         </section>
       )}
 
-      <section className="side-section">
-        <span className="eyebrow">Position</span>
-        <dl className="props">
-          <dt>x</dt>
-          <dd className="is-mono">{length(l.origin[0], units)}</dd>
-          <dt>y</dt>
-          <dd className="is-mono">{length(l.origin[1], units)}</dd>
-          <dt>Page</dt>
-          <dd>{selection.page + 1}</dd>
-        </dl>
-        {l.editable && (
-          <p className="is-muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Drag the selected line on the page to move it.
-          </p>
-        )}
-      </section>
+      {editable && (
+        <section className="side-section">
+          <span className="eyebrow">Style</span>
+          <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
+            <div className="row">
+              <TextField
+                label={many ? "Size of first (pt)" : "Size (pt)"}
+                value={size}
+                mono
+                inputMode="decimal"
+                onChange={(e) => setSize(e.target.value)}
+                onBlur={applySize}
+                onKeyDown={(e) => e.key === "Enter" && applySize()}
+              />
+              <label className="color-field">
+                <span className="field-label">Colour</span>
+                <input
+                  type="color"
+                  className="color-input"
+                  defaultValue={rgbToHex(l.color)}
+                  key={`${l.id}-${rgbToHex(l.color)}`}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    window.clearTimeout(colorTimer.current);
+                    colorTimer.current = window.setTimeout(() => onEdit({ color: hexToRgb(v) }), 350);
+                  }}
+                />
+              </label>
+            </div>
+            <Select
+              label="Change font"
+              value={fontPick}
+              options={[{ value: "", label: many ? "Keep each line’s font" : "Keep its font" }, ...options]}
+              onChange={setFontPick}
+            />
+            {fontPick.startsWith("sys:") && (
+              <div style={{ display: "flex", gap: 16 }}>
+                <Toggle label="Bold" checked={bold} onChange={setBold} />
+                <Toggle label="Italic" checked={italic} onChange={setItalic} />
+              </div>
+            )}
+            {fontPick && (
+              <div className="inspector-actions" style={{ marginTop: 0 }}>
+                <Button appearance="primary" spacing="compact" onClick={() => onEdit({ font: parseChoice(fontPick, bold, italic) })}>
+                  Apply font
+                </Button>
+              </div>
+            )}
+          </div>
+          {!many && (
+            <p className="is-muted" style={{ marginTop: 8, fontSize: 12 }}>
+              Drawn at {l.em.toFixed(2)} pt{Math.abs(l.angle) > 0.5 ? `, rotated ${l.angle.toFixed(0)}°` : ""}.
+            </p>
+          )}
+        </section>
+      )}
+
+      {!many && (
+        <section className="side-section">
+          <span className="eyebrow">Position</span>
+          <dl className="props" style={{ marginTop: 8 }}>
+            <dt>x</dt>
+            <dd className="is-mono">{length(l.origin[0], units)}</dd>
+            <dt>y</dt>
+            <dd className="is-mono">{length(l.origin[1], units)}</dd>
+            <dt>Page</dt>
+            <dd>{selection.page + 1}</dd>
+            {inParagraph && block && (
+              <>
+                <dt>Paragraph</dt>
+                <dd>
+                  {block.lines.length} lines, {block.align}, {length(block.width, units)} wide
+                </dd>
+              </>
+            )}
+          </dl>
+        </section>
+      )}
+      {editable && (
+        <p className="is-muted" style={{ marginTop: 12, fontSize: 12 }}>
+          Drag selected lines to move them; they snap to nearby edges and baselines (hold Alt to move freely). Arrow keys
+          nudge by 1 pt, Shift+arrow by 10 pt. Shift-click or drag a box to select more lines.
+        </p>
+      )}
     </>
   );
 }
+
+const colorTimer = { current: 0 };
 
 function AnnotInspector({ selection, onDelete }: { selection: Extract<Selection, { kind: "annot" }>; onDelete: () => void }) {
   const a = selection.annot;
@@ -314,27 +416,11 @@ function TextToolInspector({
   style: TextStyle;
   onChange: (s: TextStyle) => void;
 }) {
-  const options = useMemo(() => {
-    const out: { value: string; label: string }[] = [];
-    for (const f of fonts ?? []) {
-      if (f.editable) out.push({ value: `doc:${f.key}`, label: `Document · ${fontLabel(f)}${f.subset ? " (subset)" : ""}` });
-    }
-    for (const fam of catalog?.families ?? []) out.push({ value: `sys:${fam}`, label: `Installed · ${fam}` });
-    for (const s of catalog?.standard ?? []) out.push({ value: `std:${s}`, label: `Standard · ${s}` });
-    return out;
-  }, [fonts, catalog]);
+  const options = useFontOptions(fonts, catalog);
 
   const setFont = (v: string) => {
-    const [kind, ...rest] = v.split(":");
-    const name = rest.join(":");
     const prevSys = style.font.kind === "system" ? style.font : null;
-    const font: FontChoice =
-      kind === "doc"
-        ? { kind: "document", key: name }
-        : kind === "sys"
-          ? { kind: "system", family: name, bold: prevSys?.bold ?? false, italic: prevSys?.italic ?? false }
-          : { kind: "standard", name };
-    onChange({ ...style, font });
+    onChange({ ...style, font: parseChoice(v, prevSys?.bold ?? false, prevSys?.italic ?? false) });
   };
 
   const [size, setSize] = useState(String(style.size));

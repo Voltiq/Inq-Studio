@@ -55,11 +55,32 @@ pub enum Piece {
     Gap(f32),
 }
 
+/// A glyph found in the embedded program that the font does not map yet.
+#[derive(Clone, Debug)]
+pub struct Addition {
+    pub code: u32,
+    pub text: String,
+    /// Advance in glyph space.
+    pub width: f32,
+    /// For simple fonts: the glyph name to put into `/Differences`.
+    pub glyph_name: Option<String>,
+}
+
+/// How a font can gain glyphs it does not map yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Growth {
+    None,
+    /// Composite font with glyph-id codes: new codes come from the program's cmap.
+    Cid,
+    /// Simple font with a CFF program: unused codes get new glyphs through `/Differences`.
+    Simple,
+}
+
 pub struct Encoded {
     pub pieces: Vec<Piece>,
-    /// Glyphs found in the embedded program that need a ToUnicode and width
-    /// entry before the new codes can be used: (code, text, width).
-    pub additions: Vec<(u32, String, f32)>,
+    /// Glyphs found in the embedded program that need mapping entries
+    /// before their codes can be used.
+    pub additions: Vec<Addition>,
     /// Characters the font cannot draw at all.
     pub missing: Vec<char>,
 }
@@ -111,8 +132,9 @@ pub struct PdfFont {
     pub cid_to_gid_identity: bool,
     pub descendant: Option<ObjectId>,
     pub to_unicode_obj: Option<ObjectId>,
-    /// New glyphs can be pulled from the embedded program (CID TrueType, Identity).
+    /// New glyphs can be pulled from the embedded program.
     pub extendable: bool,
+    pub growth: Growth,
 }
 
 fn strip_subset(name: &str) -> (&str, bool) {
@@ -272,6 +294,7 @@ impl PdfFont {
             descendant: None,
             to_unicode_obj: ref_id(d, b"ToUnicode"),
             extendable: false,
+            growth: Growth::None,
         };
 
         // The dictionary holding the descriptor and widths: the CIDFont for composite fonts.
@@ -476,13 +499,27 @@ impl PdfFont {
             }
         }
 
-        // New glyphs can come from the embedded TrueType program when codes are glyph ids.
-        font.extendable = kind == FontKind::Type0
-            && font.identity
-            && font.cid_type2
-            && font.cid_to_gid_identity
-            && matches!(font.program, Some((ProgramKind::TrueType, _)))
-            && font.face_check(doc);
+        // New glyphs can come from the embedded program when codes are glyph ids
+        // (or CIDs the program resolves), or through /Differences for CFF simple fonts.
+        font.growth = if kind == FontKind::Type0 && font.identity && font.obj.is_some() {
+            match font.program {
+                Some((ProgramKind::TrueType, _)) if font.cid_type2 && font.cid_to_gid_identity && font.face_check(doc) => {
+                    Growth::Cid
+                }
+                Some((ProgramKind::OpenType, _)) if (!font.cid_type2 || font.cid_to_gid_identity) && font.face_check(doc) => {
+                    Growth::Cid
+                }
+                _ => Growth::None,
+            }
+        } else if matches!(kind, FontKind::Type1 | FontKind::TrueType)
+            && font.obj.is_some()
+            && matches!(font.program, Some((ProgramKind::Cff, _)))
+        {
+            Growth::Simple
+        } else {
+            Growth::None
+        };
+        font.extendable = font.growth != Growth::None;
         font
     }
 
@@ -570,16 +607,25 @@ impl PdfFont {
     }
 
     /// Encodes text in this font, reporting what it cannot draw.
-    pub fn encode(&self, doc: &Document, text: &str) -> Encoded {
+    /// Encodes text; without ligatures every piece stands for exactly one character.
+    pub fn encode_with(&self, doc: &Document, text: &str, ligatures: bool) -> Encoded {
         let mut out = Encoded { pieces: Vec::new(), additions: Vec::new(), missing: Vec::new() };
-        let face_data = if self.extendable { self.program_bytes(doc).map(|(_, b)| b) } else { None };
-        let face = face_data.as_ref().and_then(|b| ttf_parser::Face::parse(b, 0).ok());
+        let program = if self.growth != Growth::None { self.program_bytes(doc).map(|(_, b)| b) } else { None };
+        let face = match self.growth {
+            Growth::Cid => program.as_ref().and_then(|b| ttf_parser::Face::parse(b, 0).ok()),
+            _ => None,
+        };
+        let cff = match self.growth {
+            Growth::Simple => program.as_ref().and_then(|b| ttf_parser::cff::Table::parse(b)),
+            _ => None,
+        };
         let mut added: HashMap<char, u32> = HashMap::new();
+        let mut free_codes = self.free_codes();
         let chars: Vec<char> = text.chars().collect();
         let mut i = 0;
         while i < chars.len() {
             // Ligatures first ("fi" as one glyph), then single characters.
-            if i + 1 < chars.len() {
+            if ligatures && i + 1 < chars.len() {
                 let pair: String = chars[i..i + 2].iter().collect();
                 if let Some(code) = self.reverse.get(&pair) {
                     if !pair.chars().all(|c| c.is_ascii_alphabetic()) || self.reverse.get(&chars[i].to_string()).is_none() {
@@ -607,16 +653,36 @@ impl PdfFont {
                 continue;
             }
             if let Some(face) = &face {
-                if let Some(gid) = face.glyph_index(c) {
-                    if gid.0 != 0 {
-                        let code = gid.0 as u32;
-                        let upem = face.units_per_em().max(1) as f32;
-                        let w = face.glyph_hor_advance(gid).unwrap_or(0) as f32 * 1000.0 / upem;
-                        out.additions.push((code, s.clone(), w));
-                        added.insert(c, code);
-                        out.pieces.push(Piece::Code(code));
-                        continue;
-                    }
+                if let Some(gid) = face.glyph_index(c).filter(|g| g.0 != 0) {
+                    // In an OpenType program with CID-keyed CFF the code is the glyph's CID.
+                    let code = face
+                        .tables()
+                        .cff
+                        .and_then(|cff| cff.glyph_cid(gid))
+                        .map(|cid| cid as u32)
+                        .unwrap_or(gid.0 as u32);
+                    let upem = face.units_per_em().max(1) as f32;
+                    let width = face.glyph_hor_advance(gid).unwrap_or(0) as f32 * 1000.0 / upem;
+                    out.additions.push(Addition { code, text: s.clone(), width, glyph_name: None });
+                    added.insert(c, code);
+                    out.pieces.push(Piece::Code(code));
+                    continue;
+                }
+            }
+            if let Some(cff) = &cff {
+                let name = crate::encoding::unicode_to_glyph(c);
+                let gid = cff
+                    .glyph_index_by_name(&name)
+                    .or_else(|| cff.glyph_index_by_name(&format!("uni{:04X}", c as u32)))
+                    .filter(|g| g.0 != 0);
+                if let (Some(gid), false) = (gid, free_codes.is_empty()) {
+                    let code = free_codes.remove(0);
+                    let m = cff.matrix();
+                    let width = cff.glyph_width(gid).unwrap_or(0) as f32 * m.sx * 1000.0;
+                    out.additions.push(Addition { code, text: s.clone(), width, glyph_name: Some(name) });
+                    added.insert(c, code);
+                    out.pieces.push(Piece::Code(code));
+                    continue;
                 }
             }
             if c == ' ' || c == '\u{A0}' || c == '\t' {
@@ -629,6 +695,28 @@ impl PdfFont {
             }
         }
         out
+    }
+
+    /// Makes glyphs added during an edit known to this (working) copy, so later
+    /// text in the same edit reuses their codes.
+    pub fn register(&mut self, additions: &[Addition]) {
+        for a in additions {
+            self.to_unicode.insert(a.code, a.text.clone());
+            self.reverse.entry(a.text.clone()).or_insert(a.code);
+            self.widths.insert(a.code, a.width);
+        }
+    }
+
+    /// Single-byte codes no glyph uses yet, preferring the upper half.
+    fn free_codes(&self) -> Vec<u32> {
+        if self.growth != Growth::Simple {
+            return Vec::new();
+        }
+        let used: std::collections::HashSet<u32> = self.reverse.values().copied().collect();
+        (128..=255u32)
+            .chain(33..=127)
+            .filter(|c| !used.contains(c) && self.widths.get(c).map(|w| *w == 0.0).unwrap_or(true))
+            .collect()
     }
 
     pub fn program_bytes(&self, doc: &Document) -> Option<(ProgramKind, Vec<u8>)> {
@@ -659,57 +747,129 @@ impl PdfFont {
     }
 }
 
-/// Records glyphs pulled from an embedded program: adds ToUnicode entries and
-/// widths so the new codes copy, search and lay out correctly.
-pub fn apply_additions(doc: &mut Document, font: &PdfFont, additions: &[(u32, String, f32)]) -> Result<(), String> {
+/// Records glyphs pulled from an embedded program: ToUnicode entries, widths
+/// and, for simple fonts, `/Differences` entries, so the new codes draw,
+/// copy, search and lay out correctly.
+pub fn apply_additions(doc: &mut Document, font: &PdfFont, additions: &[Addition]) -> Result<(), String> {
     if additions.is_empty() {
         return Ok(());
     }
     let font_id = font.obj.ok_or("This font is stored inline and cannot be extended")?;
-    // ToUnicode: rewrite with the old and new entries.
-    let mut map = font.to_unicode.clone();
-    for (code, text, _) in additions {
-        map.insert(*code, text.clone());
-    }
-    let content = cmap::write_to_unicode(&map, font.code_len);
-    match font.to_unicode_obj {
-        Some(id) => {
-            let mut s = Stream::new(Dictionary::new(), content);
-            let _ = s.compress();
-            doc.objects.insert(id, Object::Stream(s));
+    // ToUnicode: rewrite with the old and new entries (simple fonts only when they have one).
+    if font.kind == FontKind::Type0 || font.to_unicode_obj.is_some() {
+        let mut map = font.to_unicode.clone();
+        for a in additions {
+            map.insert(a.code, a.text.clone());
         }
-        None => {
-            let mut s = Stream::new(Dictionary::new(), content);
-            let _ = s.compress();
-            let id = doc.add_object(s);
-            doc.get_dictionary_mut(font_id).map_err(err)?.set("ToUnicode", Object::Reference(id));
+        let mut s = Stream::new(Dictionary::new(), cmap::write_to_unicode(&map, font.code_len));
+        let _ = s.compress();
+        match font.to_unicode_obj {
+            Some(id) => {
+                doc.objects.insert(id, Object::Stream(s));
+            }
+            None => {
+                let id = doc.add_object(s);
+                doc.get_dictionary_mut(font_id).map_err(err)?.set("ToUnicode", Object::Reference(id));
+            }
         }
     }
-    // Widths: append `cid [w]` entries to the CIDFont's W array.
-    let cid_id = font.descendant;
-    let mut entries: Vec<Object> = Vec::new();
-    for (code, _, w) in additions {
-        entries.push(Object::Integer(*code as i64));
-        entries.push(Object::Array(vec![real(*w)]));
-    }
-    if let Some(cid_id) = cid_id {
-        let w_obj = doc.get_dictionary(cid_id).ok().and_then(|d| d.get(b"W").ok().cloned());
-        match w_obj {
-            Some(Object::Reference(wid)) => {
-                if let Ok(Object::Array(arr)) = doc.get_object_mut(wid) {
+    if font.kind == FontKind::Type0 {
+        // Widths: append `cid [w]` entries to the CIDFont's W array.
+        let mut entries: Vec<Object> = Vec::new();
+        for a in additions {
+            entries.push(Object::Integer(a.code as i64));
+            entries.push(Object::Array(vec![real(a.width)]));
+        }
+        if let Some(cid_id) = font.descendant {
+            let w_obj = doc.get_dictionary(cid_id).ok().and_then(|d| d.get(b"W").ok().cloned());
+            match w_obj {
+                Some(Object::Reference(wid)) => {
+                    if let Ok(Object::Array(arr)) = doc.get_object_mut(wid) {
+                        arr.extend(entries);
+                    }
+                }
+                Some(Object::Array(mut arr)) => {
                     arr.extend(entries);
+                    doc.get_dictionary_mut(cid_id).map_err(err)?.set("W", Object::Array(arr));
+                }
+                _ => {
+                    doc.get_dictionary_mut(cid_id).map_err(err)?.set("W", Object::Array(entries));
                 }
             }
-            Some(Object::Array(mut arr)) => {
-                arr.extend(entries);
-                doc.get_dictionary_mut(cid_id).map_err(err)?.set("W", Object::Array(arr));
+        }
+        return Ok(());
+    }
+
+    // Simple font: name the glyphs in /Differences ...
+    let mut diffs: Vec<Object> = Vec::new();
+    for a in additions {
+        diffs.push(Object::Integer(a.code as i64));
+        diffs.push(Object::Name(a.glyph_name.clone().unwrap_or_else(|| ".notdef".into()).into_bytes()));
+    }
+    let enc = doc.get_dictionary(font_id).map_err(err)?.get(b"Encoding").ok().cloned();
+    match enc {
+        Some(Object::Reference(eid)) if doc.get_dictionary(eid).is_ok() => {
+            let d = doc.get_dictionary_mut(eid).map_err(err)?;
+            let mut arr = d.get(b"Differences").and_then(Object::as_array).cloned().unwrap_or_default();
+            arr.extend(diffs);
+            d.set("Differences", arr);
+        }
+        Some(Object::Dictionary(mut d)) => {
+            let mut arr = d.get(b"Differences").and_then(Object::as_array).cloned().unwrap_or_default();
+            arr.extend(diffs);
+            d.set("Differences", arr);
+            doc.get_dictionary_mut(font_id).map_err(err)?.set("Encoding", d);
+        }
+        other => {
+            let mut d = Dictionary::new();
+            d.set("Type", "Encoding");
+            if let Some(Object::Name(n)) = other {
+                d.set("BaseEncoding", Object::Name(n));
             }
-            _ => {
-                doc.get_dictionary_mut(cid_id).map_err(err)?.set("W", Object::Array(entries));
-            }
+            d.set("Differences", diffs);
+            doc.get_dictionary_mut(font_id).map_err(err)?.set("Encoding", d);
         }
     }
+    // ... and give them widths, growing /Widths when a code falls outside it.
+    let fd = doc.get_dictionary(font_id).map_err(err)?;
+    let first = fd.get(b"FirstChar").ok().and_then(num).unwrap_or(0.0) as i64;
+    let widths_obj = fd.get(b"Widths").ok().cloned();
+    let mut widths: Vec<Object> = match &widths_obj {
+        Some(Object::Reference(id)) => doc.get_object(*id).ok().and_then(|o| o.as_array().ok()).cloned().unwrap_or_default(),
+        Some(Object::Array(a)) => a.clone(),
+        _ => Vec::new(),
+    };
+    let mut first = if widths.is_empty() { additions.iter().map(|a| a.code as i64).min().unwrap_or(0) } else { first };
+    for a in additions {
+        let c = a.code as i64;
+        while c < first {
+            widths.insert(0, Object::Integer(0));
+            first -= 1;
+        }
+        while c >= first + widths.len() as i64 {
+            widths.push(Object::Integer(0));
+        }
+        widths[(c - first) as usize] = real(a.width);
+    }
+    let last = first + widths.len() as i64 - 1;
+    match widths_obj {
+        Some(Object::Reference(id)) => {
+            doc.objects.insert(id, Object::Array(widths));
+        }
+        _ => {
+            doc.get_dictionary_mut(font_id).map_err(err)?.set("Widths", widths);
+        }
+    }
+    let fd = doc.get_dictionary_mut(font_id).map_err(err)?;
+    fd.set("FirstChar", first);
+    fd.set("LastChar", last);
     Ok(())
+}
+
+/// Helvetica advance of a character (for tests that lay out text by hand).
+#[cfg(test)]
+pub fn tests_width(c: char) -> f32 {
+    std14_width(Std14::Helvetica, c)
 }
 
 #[cfg(test)]

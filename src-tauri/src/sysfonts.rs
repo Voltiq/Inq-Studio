@@ -31,6 +31,22 @@ pub struct LoadedFont {
     pub index: u32,
     pub ps_name: String,
     pub family: String,
+    /// "file|face index": identifies the face across edits, so one document
+    /// keeps one growing subset per installed face.
+    pub source: String,
+}
+
+impl LoadedFont {
+    /// Loads a font file directly (fonts that are not installed, and tests).
+    #[cfg(test)]
+    pub fn from_file(path: &std::path::Path, index: u32) -> Option<LoadedFont> {
+        let data = Arc::new(std::fs::read(path).ok()?);
+        let face = ttf_parser::Face::parse(&data, index).ok()?;
+        let ps = face_name(&face, ttf_parser::name_id::POST_SCRIPT_NAME).unwrap_or_default();
+        let family = face_name(&face, ttf_parser::name_id::FAMILY).unwrap_or_default();
+        drop(face);
+        Some(LoadedFont { data, index, ps_name: ps, family, source: format!("{}|{index}", path.display()) })
+    }
 }
 
 static INDEX: OnceLock<Vec<InstalledFont>> = OnceLock::new();
@@ -177,48 +193,90 @@ pub fn find_family(family: &str, ps_name: Option<&str>, bold: bool, italic: bool
                 score += 5;
             }
             if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
-                best = Some((score, LoadedFont { data: data.clone(), index, ps_name: ps, family: fam_name }));
+                best = Some((
+                    score,
+                    LoadedFont {
+                        data: data.clone(),
+                        index,
+                        ps_name: ps,
+                        family: fam_name,
+                        source: format!("{}|{index}", cand.path.display()),
+                    },
+                ));
             }
         }
     }
     best.map(|(_, f)| f)
 }
 
-/// The result of embedding: the new font object and how to encode with it.
+/// The result of embedding: the font object and how to encode with it.
 pub struct EmbeddedFont {
     pub font_id: ObjectId,
-    pub codes: BTreeMap<char, u16>,
+    /// Character to code (two bytes, Identity-H).
+    pub codes: BTreeMap<char, u32>,
 }
 
-fn subset_tag(seed: &[u16]) -> String {
+fn subset_tag(seed: &str) -> String {
     let mut h: u32 = 2166136261;
-    for g in seed {
-        h = (h ^ *g as u32).wrapping_mul(16777619);
+    for b in seed.bytes() {
+        h = (h ^ b as u32).wrapping_mul(16777619);
     }
-    (0..6)
-        .map(|i| (b'A' + ((h >> (i * 5)) % 26) as u8) as char)
+    (0..6).map(|i| (b'A' + ((h >> (i * 5)) % 26) as u8) as char).collect()
+}
+
+/// Fonts this app embedded earlier from the same installed face.
+fn inq_fonts(doc: &Document, source: &str) -> Vec<ObjectId> {
+    doc.objects
+        .iter()
+        .filter_map(|(id, o)| {
+            let d = o.as_dict().ok()?;
+            let s = d.get(b"InqSource").ok()?.as_str().ok()?;
+            (s == source.as_bytes()).then_some(*id)
+        })
         .collect()
 }
 
-/// Embeds the glyphs `text` needs from an installed font as a composite
-/// (Type 0, Identity-H) font. Codes are the glyph ids of the subset.
+/// Code → text of an embedded font's ToUnicode map.
+fn font_map(doc: &Document, font_id: ObjectId) -> BTreeMap<u32, String> {
+    doc.get_dictionary(font_id)
+        .ok()
+        .and_then(|d| d.get(b"ToUnicode").ok())
+        .and_then(|o| stream_bytes(doc, o))
+        .map(|b| cmap::CMap::parse(&b).unicode)
+        .unwrap_or_default()
+}
+
+fn compressed(dict: lopdf::Dictionary, data: Vec<u8>) -> Stream {
+    let mut s = Stream::new(dict, data);
+    let _ = s.compress();
+    s
+}
+
+/// Makes `text` drawable with an installed font, as a composite (Type 0,
+/// Identity-H) font embedded as a subset.
+///
+/// TrueType faces get one embedded font per document that grows as edits
+/// need more glyphs: codes are the face's own glyph ids, mapped to the subset
+/// through a `/CIDToGIDMap`, so earlier text keeps its codes when the subset
+/// is rebuilt. CFF (OpenType) faces cannot remap CIDs that way, so an
+/// existing subset is reused when it already has every glyph, and a new one
+/// is made otherwise.
 pub fn embed(doc: &mut Document, font: &LoadedFont, text: &str) -> Result<EmbeddedFont, String> {
     let face = ttf_parser::Face::parse(&font.data, font.index).map_err(err)?;
     let upem = face.units_per_em().max(1) as f32;
     let scale = 1000.0 / upem;
+    let is_cff = face.tables().cff.is_some();
+
     let mut missing = Vec::new();
-    let mut remapper = subsetter::GlyphRemapper::new();
-    remapper.remap(0);
-    let mut chars: BTreeMap<char, u16> = BTreeMap::new();
+    let mut wanted: BTreeMap<char, u16> = BTreeMap::new();
     for c in text.chars() {
-        if c == '\n' || c == '\r' || chars.contains_key(&c) {
+        if c == '\n' || c == '\r' || wanted.contains_key(&c) {
             continue;
         }
         let c2 = if c == '\t' || c == '\u{A0}' { ' ' } else { c };
         match face.glyph_index(c2) {
             Some(g) => {
-                chars.insert(c, g.0);
-                remapper.remap(g.0);
+                wanted.insert(c, g.0);
             }
             None => missing.push(c),
         }
@@ -227,32 +285,105 @@ pub fn embed(doc: &mut Document, font: &LoadedFont, text: &str) -> Result<Embedd
         let list: String = missing.iter().map(|c| format!("‘{c}’ ")).collect();
         return Err(format!("{} has no glyphs for {}", font.family, list.trim_end()));
     }
-    let data = subsetter::subset(&font.data, font.index, &remapper).map_err(|e| format!("Subsetting failed: {e:?}"))?;
-    let is_cff = face.tables().cff.is_some();
+    let advance = |gid: u16| face.glyph_hor_advance(ttf_parser::GlyphId(gid)).unwrap_or(0) as f32 * scale;
 
-    let mut codes = BTreeMap::new();
-    let mut widths = BTreeMap::new();
-    let mut to_unicode = BTreeMap::new();
-    for (c, old) in &chars {
-        let new = remapper.get(*old).unwrap_or(0);
-        codes.insert(*c, new);
-        let adv = face.glyph_hor_advance(ttf_parser::GlyphId(*old)).unwrap_or(0) as f32 * scale;
-        widths.insert(new, adv);
-        to_unicode.insert(new as u32, c.to_string());
+    // Reuse (and for TrueType, grow) what this document already has from this face.
+    for id in inq_fonts(doc, &font.source) {
+        let map = font_map(doc, id);
+        let by_text: HashMap<String, u32> = map.iter().map(|(c, t)| (t.clone(), *c)).collect();
+        if is_cff {
+            if wanted.keys().all(|c| by_text.contains_key(&c.to_string())) {
+                let codes: BTreeMap<char, u32> = wanted.keys().map(|c| (*c, by_text[&c.to_string()])).collect();
+                return Ok(EmbeddedFont { font_id: id, codes });
+            }
+            continue;
+        }
+        let mut all: BTreeMap<u32, String> = map.clone();
+        let mut grew = false;
+        for (c, g) in &wanted {
+            if !all.contains_key(&(*g as u32)) {
+                all.insert(*g as u32, c.to_string());
+                grew = true;
+            }
+        }
+        if grew {
+            write_truetype_subset(doc, Some(id), font, &face, &all)?;
+        }
+        let codes = wanted.iter().map(|(c, g)| (*c, *g as u32)).collect();
+        return Ok(EmbeddedFont { font_id: id, codes });
     }
 
-    let gids: Vec<u16> = codes.values().copied().collect();
-    let base_font = format!("{}+{}", subset_tag(&gids), font.ps_name.replace(' ', ""));
+    if !is_cff {
+        let all: BTreeMap<u32, String> = wanted.iter().map(|(c, g)| (*g as u32, c.to_string())).collect();
+        let id = write_truetype_subset(doc, None, font, &face, &all)?;
+        let codes = wanted.iter().map(|(c, g)| (*c, *g as u32)).collect();
+        return Ok(EmbeddedFont { font_id: id, codes });
+    }
 
-    let mut file = if is_cff {
-        Stream::new(dictionary! { "Subtype" => "OpenType" }, data)
-    } else {
-        let l = data.len() as i64;
-        Stream::new(dictionary! { "Length1" => l }, data)
-    };
-    let _ = file.compress();
-    let file_id = doc.add_object(file);
+    // CFF: the subset's glyph ids are the CIDs.
+    let mut remapper = subsetter::GlyphRemapper::new();
+    remapper.remap(0);
+    for g in wanted.values() {
+        remapper.remap(*g);
+    }
+    let data = subsetter::subset(&font.data, font.index, &remapper).map_err(|e| format!("Subsetting failed: {e:?}"))?;
+    let mut codes = BTreeMap::new();
+    let mut widths = HashMap::new();
+    let mut to_unicode = BTreeMap::new();
+    for (c, old) in &wanted {
+        let new = remapper.get(*old).unwrap_or(0) as u32;
+        codes.insert(*c, new);
+        widths.insert(new, advance(*old));
+        to_unicode.entry(new).or_insert_with(|| c.to_string());
+    }
+    let seed: String = to_unicode.values().cloned().collect();
+    let base_font = format!("{}+{}", subset_tag(&seed), font.ps_name.replace(' ', ""));
+    let file_id = doc.add_object(compressed(dictionary! { "Subtype" => "OpenType" }, data));
+    let descriptor_id = doc.add_object(descriptor(&face, &base_font, "FontFile3", file_id));
+    let w = w_array(&widths);
+    let cid_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "CIDFontType0",
+        "BaseFont" => Object::Name(base_font.clone().into_bytes()),
+        "CIDSystemInfo" => cid_system_info(),
+        "FontDescriptor" => descriptor_id,
+        "DW" => real(advance(0)),
+        "W" => w,
+    });
+    let tu_id = doc.add_object(compressed(lopdf::Dictionary::new(), cmap::write_to_unicode(&to_unicode, 2)));
+    let font_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type0",
+        "BaseFont" => Object::Name(base_font.into_bytes()),
+        "Encoding" => "Identity-H",
+        "DescendantFonts" => vec![Object::Reference(cid_id)],
+        "ToUnicode" => tu_id,
+        "InqSource" => Object::string_literal(font.source.clone()),
+    });
+    Ok(EmbeddedFont { font_id, codes })
+}
 
+fn cid_system_info() -> lopdf::Dictionary {
+    dictionary! {
+        "Registry" => Object::string_literal("Adobe"),
+        "Ordering" => Object::string_literal("Identity"),
+        "Supplement" => 0,
+    }
+}
+
+fn w_array(widths: &HashMap<u32, f32>) -> Vec<Object> {
+    let mut keys: Vec<&u32> = widths.keys().collect();
+    keys.sort();
+    let mut w = Vec::new();
+    for k in keys {
+        w.push(Object::Integer(*k as i64));
+        w.push(Object::Array(vec![real(widths[k])]));
+    }
+    w
+}
+
+fn descriptor(face: &ttf_parser::Face, base_font: &str, file_key: &str, file_id: ObjectId) -> lopdf::Dictionary {
+    let scale = 1000.0 / face.units_per_em().max(1) as f32;
     let bbox = face.global_bounding_box();
     let mut flags = 4i64; // symbolic: glyphs are addressed by id, not a standard encoding
     if face.is_monospaced() {
@@ -261,9 +392,9 @@ pub fn embed(doc: &mut Document, font: &LoadedFont, text: &str) -> Result<Embedd
     if face.is_italic() {
         flags |= 64;
     }
-    let descriptor = dictionary! {
+    let mut d = dictionary! {
         "Type" => "FontDescriptor",
-        "FontName" => Object::Name(base_font.clone().into_bytes()),
+        "FontName" => Object::Name(base_font.as_bytes().to_vec()),
         "Flags" => flags,
         "FontBBox" => vec![
             real(bbox.x_min as f32 * scale), real(bbox.y_min as f32 * scale),
@@ -275,46 +406,89 @@ pub fn embed(doc: &mut Document, font: &LoadedFont, text: &str) -> Result<Embedd
         "CapHeight" => real(face.capital_height().unwrap_or(face.ascender()) as f32 * scale),
         "StemV" => 80,
         "FontWeight" => face.weight().to_number() as i64,
-        (if is_cff { "FontFile3" } else { "FontFile2" }) => file_id,
     };
-    let descriptor_id = doc.add_object(descriptor);
+    d.set(file_key, Object::Reference(file_id));
+    d
+}
 
-    let mut w = Vec::new();
-    for (gid, adv) in &widths {
-        w.push(Object::Integer(*gid as i64));
-        w.push(Object::Array(vec![real(*adv)]));
+/// Writes (or rewrites in place) a TrueType subset holding the glyphs in
+/// `glyphs` (face glyph id → text). Codes stay the face's glyph ids.
+fn write_truetype_subset(
+    doc: &mut Document,
+    existing: Option<ObjectId>,
+    font: &LoadedFont,
+    face: &ttf_parser::Face,
+    glyphs: &BTreeMap<u32, String>,
+) -> Result<ObjectId, String> {
+    let scale = 1000.0 / face.units_per_em().max(1) as f32;
+    let mut remapper = subsetter::GlyphRemapper::new();
+    remapper.remap(0);
+    for g in glyphs.keys() {
+        remapper.remap(*g as u16);
     }
-    let mut cid_font = dictionary! {
+    let data = subsetter::subset(&font.data, font.index, &remapper).map_err(|e| format!("Subsetting failed: {e:?}"))?;
+    let max = glyphs.keys().max().copied().unwrap_or(0) as usize;
+    let mut map = vec![0u8; (max + 1) * 2];
+    for g in glyphs.keys() {
+        let new = remapper.get(*g as u16).unwrap_or(0);
+        map[*g as usize * 2] = (new >> 8) as u8;
+        map[*g as usize * 2 + 1] = new as u8;
+    }
+    let widths: HashMap<u32, f32> = glyphs
+        .keys()
+        .map(|g| (*g, face.glyph_hor_advance(ttf_parser::GlyphId(*g as u16)).unwrap_or(0) as f32 * scale))
+        .collect();
+    let len1 = data.len() as i64;
+    let file = compressed(dictionary! { "Length1" => len1 }, data);
+    let cid_map = compressed(lopdf::Dictionary::new(), map);
+    let tu = compressed(lopdf::Dictionary::new(), cmap::write_to_unicode(glyphs, 2));
+
+    if let Some(font_id) = existing {
+        // Swap the program, glyph map, widths and ToUnicode inside the same objects.
+        let f = doc.get_dictionary(font_id).map_err(err)?;
+        let tu_id = f.get(b"ToUnicode").and_then(Object::as_reference).map_err(err)?;
+        let cid_id = f
+            .get(b"DescendantFonts")
+            .and_then(Object::as_array)
+            .ok()
+            .and_then(|a| a.first())
+            .and_then(|o| o.as_reference().ok())
+            .ok_or("Embedded font has no descendant")?;
+        let cd = doc.get_dictionary(cid_id).map_err(err)?;
+        let map_id = cd.get(b"CIDToGIDMap").and_then(Object::as_reference).map_err(err)?;
+        let fd_id = cd.get(b"FontDescriptor").and_then(Object::as_reference).map_err(err)?;
+        let file_id = doc.get_dictionary(fd_id).map_err(err)?.get(b"FontFile2").and_then(Object::as_reference).map_err(err)?;
+        doc.objects.insert(file_id, Object::Stream(file));
+        doc.objects.insert(map_id, Object::Stream(cid_map));
+        doc.objects.insert(tu_id, Object::Stream(tu));
+        doc.get_dictionary_mut(cid_id).map_err(err)?.set("W", w_array(&widths));
+        return Ok(font_id);
+    }
+
+    let base_font = format!("{}+{}", subset_tag(&font.source), font.ps_name.replace(' ', ""));
+    let file_id = doc.add_object(file);
+    let descriptor_id = doc.add_object(descriptor(face, &base_font, "FontFile2", file_id));
+    let map_id = doc.add_object(cid_map);
+    let cid_id = doc.add_object(dictionary! {
         "Type" => "Font",
-        "Subtype" => if is_cff { "CIDFontType0" } else { "CIDFontType2" },
+        "Subtype" => "CIDFontType2",
         "BaseFont" => Object::Name(base_font.clone().into_bytes()),
-        "CIDSystemInfo" => dictionary! {
-            "Registry" => Object::string_literal("Adobe"),
-            "Ordering" => Object::string_literal("Identity"),
-            "Supplement" => 0,
-        },
+        "CIDSystemInfo" => cid_system_info(),
         "FontDescriptor" => descriptor_id,
         "DW" => real(face.glyph_hor_advance(ttf_parser::GlyphId(0)).unwrap_or(0) as f32 * scale),
-        "W" => w,
-    };
-    if !is_cff {
-        cid_font.set("CIDToGIDMap", "Identity");
-    }
-    let cid_id = doc.add_object(cid_font);
-
-    let mut tu = Stream::new(lopdf::Dictionary::new(), cmap::write_to_unicode(&to_unicode, 2));
-    let _ = tu.compress();
+        "W" => w_array(&widths),
+        "CIDToGIDMap" => map_id,
+    });
     let tu_id = doc.add_object(tu);
-
-    let font_id = doc.add_object(dictionary! {
+    Ok(doc.add_object(dictionary! {
         "Type" => "Font",
         "Subtype" => "Type0",
-        "BaseFont" => Object::Name(base_font.clone().into_bytes()),
+        "BaseFont" => Object::Name(base_font.into_bytes()),
         "Encoding" => "Identity-H",
         "DescendantFonts" => vec![Object::Reference(cid_id)],
         "ToUnicode" => tu_id,
-    });
-    Ok(EmbeddedFont { font_id, codes })
+        "InqSource" => Object::string_literal(font.source.clone()),
+    }))
 }
 
 /// One of the 14 standard fonts every PDF reader has, with WinAnsi encoding.

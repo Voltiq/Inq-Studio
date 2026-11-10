@@ -545,6 +545,12 @@
   outline-color: color-mix(in oklab, var(--warning) 60%, transparent);
 }
 
+.line-box.is-in-block {
+  outline: 1px dashed var(--accent-line);
+  outline-offset: 1px;
+  background: color-mix(in oklab, var(--accent) 5%, transparent);
+}
+
 .line-box.is-locked {
   cursor: not-allowed;
 }
@@ -598,6 +604,41 @@
   color: var(--tooltip-kbd-text);
   border: 0;
   box-shadow: none;
+}
+
+.block-editor {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  field-sizing: content;
+  padding: 0 2px;
+}
+
+.mark-preview {
+  position: absolute;
+  transform-origin: 0 0;
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+.snap-guide {
+  position: absolute;
+  background: #ff3d7f;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.snap-guide.is-vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.snap-guide.is-horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
 }
 
 .annot-box {
@@ -982,6 +1023,96 @@
 
 .font-meta dd {
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----- History ----- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-100);
+  width: 100%;
+  padding: 6px var(--space-100);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-subtle);
+  font: inherit;
+  text-align: left;
+}
+
+.history-row:hover {
+  background: var(--bg-neutral-subtle-hovered);
+  color: var(--text);
+}
+
+.history-row.is-current {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.history-row.is-current .history-dot {
+  color: var(--icon-selected);
+}
+
+.history-row.is-undone {
+  color: var(--text-subtlest);
+}
+
+.history-row.is-undone .history-label {
+  text-decoration: line-through;
+  text-decoration-color: var(--line-2);
+}
+
+.history-dot {
+  flex: none;
+  color: var(--icon-subtlest);
+}
+
+.history-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----- Line spans ----- */
+
+.spans {
+  margin-top: var(--space-100);
+}
+
+.span-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-100);
+  align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--font-size-small);
+}
+
+.span-row:first-child {
+  border-top: 0;
+}
+
+.span-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.span-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

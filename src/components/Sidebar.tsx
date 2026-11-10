@@ -12,6 +12,8 @@ import {
   Trash2,
   Type,
   FileInput,
+  History,
+  CircleDot,
 } from "lucide-react";
 import { IconButton } from "./ui/Button";
 import { EmptyState, Lozenge, Spinner } from "./ui/Feedback";
@@ -24,7 +26,7 @@ import { fontLabel, plural, rgbToHex } from "../lib/format";
 import type { Selection } from "./Viewer";
 import { cx } from "../lib/utils";
 
-export type SideTab = "pages" | "outline" | "fonts" | "comments";
+export type SideTab = "pages" | "outline" | "fonts" | "comments" | "history";
 
 export type PageAction = "rotate-left" | "rotate-right" | "duplicate" | "blank-before" | "blank-after" | "insert-file" | "extract" | "delete";
 
@@ -46,6 +48,9 @@ export function Sidebar({
   selection,
   onSelect,
   onDeleteAnnot,
+  history,
+  future,
+  onHistoryGo,
 }: {
   tab: SideTab;
   onTab: (t: SideTab) => void;
@@ -64,6 +69,9 @@ export function Sidebar({
   selection: Selection;
   onSelect: (s: Selection) => void;
   onDeleteAnnot: (page: number, index: number) => void;
+  history: string[];
+  future: string[];
+  onHistoryGo: (steps: number) => void;
 }) {
   return (
     <aside className="panel side" aria-label="Document sidebar">
@@ -77,6 +85,7 @@ export function Sidebar({
             { value: "outline", label: "", icon: BookOpen },
             { value: "fonts", label: "", icon: Type },
             { value: "comments", label: "", icon: MessageSquare },
+            { value: "history", label: "", icon: History },
           ]}
         />
       </div>
@@ -105,7 +114,45 @@ export function Sidebar({
           onDelete={onDeleteAnnot}
         />
       )}
+      {tab === "history" && <HistoryPanel history={history} future={future} onGo={onHistoryGo} />}
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// History
+// ---------------------------------------------------------------------------
+
+function HistoryPanel({ history, future, onGo }: { history: string[]; future: string[]; onGo: (steps: number) => void }) {
+  const current = history.length;
+  const rows = [
+    { label: "Opened", step: 0 },
+    ...history.map((label, i) => ({ label, step: i + 1 })),
+    ...future.map((label, i) => ({ label, step: current + i + 1 })),
+  ];
+  return (
+    <div className="side-body">
+      <span className="eyebrow" style={{ display: "block", marginBottom: 8 }}>
+        {history.length ? plural(history.length, "change") : "No changes yet"}
+      </span>
+      <div className="history">
+        {rows.map((r) => (
+          <button
+            key={r.step}
+            type="button"
+            className={cx("history-row", r.step === current && "is-current", r.step > current && "is-undone")}
+            onClick={() => r.step !== current && onGo(r.step - current)}
+            data-tooltip={r.step === current ? "Current state" : r.step < current ? "Go back to this step" : "Redo up to this step"}
+          >
+            <CircleDot size={12} aria-hidden="true" className="history-dot" />
+            <span className="history-label">{r.label}</span>
+          </button>
+        ))}
+      </div>
+      <p className="is-muted" style={{ fontSize: 12, marginTop: 12 }}>
+        Click a step to go back to it. Steps after it stay available until you make a new change.
+      </p>
+    </div>
   );
 }
 
@@ -370,6 +417,7 @@ function OutlinePanel({ pdf, onNavigate }: { pdf: PDFDocumentProxy; onNavigate: 
 
 function editability(f: FontSummary): string {
   if (!f.editable) return "Drawn with PDF operators (Type 3); not editable yet.";
+  if (f.added) return `Embedded from ${f.systemMatch ?? "an installed font"} by Inq Studio; it grows as edits need more characters.`;
   if (!f.embedded) return "Not embedded: readers draw it with their own copy. Edits use the same encoding.";
   if (f.subset) {
     const extra = f.extendable
@@ -419,6 +467,7 @@ function FontCard({ docId, f, active, onNavigate }: { docId: number; f: FontSumm
         {f.embedded ? <Lozenge appearance="success">embedded</Lozenge> : <Lozenge appearance="warning">not embedded</Lozenge>}
         {f.subset && <Lozenge appearance="information">subset</Lozenge>}
         {f.systemMatch && <Lozenge appearance="discovery">installed</Lozenge>}
+        {f.added && <Lozenge appearance="information">added by Inq</Lozenge>}
         {!f.hasToUnicode && f.embedded && <Lozenge appearance="warning">no unicode map</Lozenge>}
       </div>
       <p className="font-meta" style={{ display: "block" }}>

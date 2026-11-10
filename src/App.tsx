@@ -83,6 +83,8 @@ export default function App() {
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
 
   const active = docs.find((d) => d.info.state.id === activeId) ?? null;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const docsRef = useRef(docs);
   docsRef.current = docs;
 
@@ -312,7 +314,7 @@ export default function App() {
       const path = await saveDialog({ defaultPath: d.info.state.path ?? d.info.state.name, filters: PDF_FILTER }).catch(() => null);
       if (!path) return false;
       try {
-        const state = await api.save(docId, path);
+        const state = await api.save(docId, path, settingsRef.current.saveMode);
         updateDoc(docId, (x) => ({ ...x, info: { ...x.info, state } }));
         setRecent(rememberRecent({ path, name: state.name, pages: state.pages }));
         toast("success", "Saved", state.name);
@@ -331,9 +333,11 @@ export default function App() {
       if (!d) return false;
       if (!d.info.state.path) return saveAs(docId);
       try {
-        const state = await api.save(docId);
+        const mode = settingsRef.current.saveMode;
+        const state = await api.save(docId, undefined, mode);
         updateDoc(docId, (x) => ({ ...x, info: { ...x.info, state } }));
-        toast("success", "Saved", state.name);
+        const incremental = mode === "incremental" || (mode === "auto" && d.info.state.signed);
+        toast("success", "Saved", incremental ? `${state.name}: changes appended, signatures kept` : state.name);
         return true;
       } catch (e) {
         toast("error", "Saving failed", errorText(e));
@@ -397,9 +401,15 @@ export default function App() {
 
   const actions: ViewerActions = useMemo(
     () => ({
-      editLine: async (page, line, revision, edit) => {
+      editLines: async (page, lines, revision, edit) => {
         if (id == null) return false;
-        const ok = await run(id, () => api.editLine(id, page, revision, line, edit));
+        const ok = await run(id, () => api.editLines(id, page, revision, lines, edit));
+        if (ok) setSelection(null);
+        return ok;
+      },
+      editBlock: async (page, block, revision, text) => {
+        if (id == null) return false;
+        const ok = await run(id, () => api.editBlock(id, page, revision, block, text));
         if (ok) setSelection(null);
         return ok;
       },
@@ -411,8 +421,13 @@ export default function App() {
 
   const editSelected = useCallback(
     (edit: LineEdit) => {
-      if (selection?.kind !== "line") return;
-      actions.editLine(selection.page, selection.line.id, selection.revision, edit);
+      if (selection?.kind !== "lines") return;
+      actions.editLines(
+        selection.page,
+        selection.lines.map((l) => l.id),
+        selection.revision,
+        edit,
+      );
     },
     [selection, actions],
   );
@@ -558,16 +573,17 @@ export default function App() {
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selection?.kind === "line" && selection.line.editable) editSelected({ delete: true });
+        if (selection?.kind === "lines" && selection.lines.every((l) => l.editable)) editSelected({ delete: true });
         else if (selection?.kind === "annot" && selection.annot.removable) deleteSelectedAnnot();
         return;
       }
-      if (e.key === "Enter" && selection?.kind === "line" && selection.line.editable && !selection.editing) {
+      if (e.key === "Enter" && selection?.kind === "lines" && selection.lines.length === 1 && selection.lines[0].editable && !selection.editing) {
         e.preventDefault();
-        setSelection({ ...selection, editing: true });
+        const para = selection.block && selection.block.lines.length > 1;
+        setSelection({ ...selection, editing: para ? "block" : "line" });
         return;
       }
-      if (selection?.kind === "line" && selection.line.editable && e.key.startsWith("Arrow")) {
+      if (selection?.kind === "lines" && selection.lines.every((l) => l.editable) && e.key.startsWith("Arrow")) {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
         const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
@@ -604,7 +620,7 @@ export default function App() {
   useEffect(() => setSelection(null), [activeId]);
 
   const markColor = settings.toolColors[tool] ?? "#ffd43b";
-  const activeFontKey = selection?.kind === "line" ? selection.line.fontKey : null;
+  const activeFontKey = selection?.kind === "lines" ? selection.lines[0].fontKey : null;
 
   // ----- render -----
 
@@ -620,6 +636,7 @@ export default function App() {
                 version: active.info.version,
                 dirty: active.info.state.dirty,
                 encrypted: active.info.wasEncrypted,
+                signed: active.info.state.signed,
               }
             : null
         }
@@ -659,6 +676,12 @@ export default function App() {
             selection={selection}
             onSelect={setSelection}
             onDeleteAnnot={(page, index) => run(active.info.state.id, () => api.deleteAnnot(active.info.state.id, page, index), "Annotation deleted")}
+            history={active.info.state.history}
+            future={active.info.state.future}
+            onHistoryGo={(steps) => {
+              setSelection(null);
+              run(active.info.state.id, () => api.historyGo(active.info.state.id, steps));
+            }}
           />
         )}
 
@@ -735,6 +758,7 @@ export default function App() {
                 navigate={navigate}
                 tool={tool}
                 showLineBoxes={settings.showLineBoxes}
+                snap={settings.snap}
                 fonts={active.fonts}
                 selection={selection}
                 onSelect={setSelection}
@@ -787,7 +811,7 @@ export default function App() {
             onSettings={setSettings}
             pageSize={pageSize}
             onEditLine={editSelected}
-            onStartEditing={() => selection?.kind === "line" && setSelection({ ...selection, editing: true })}
+            onStartEditing={(what) => selection?.kind === "lines" && setSelection({ ...selection, editing: what })}
             onDeleteAnnot={deleteSelectedAnnot}
             onSaveMeta={(m: Meta) => run(active.info.state.id, () => api.setMeta(active.info.state.id, m), "Properties updated").then(async () => {
               const info = await api.info(active.info.state.id);

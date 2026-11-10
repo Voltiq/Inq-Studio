@@ -11,6 +11,12 @@ export interface DocState {
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /** Labels of the changes made, oldest first. */
+  history: string[];
+  /** Labels of undone changes, next first. */
+  future: string[];
+  /** The document carries digital signatures. */
+  signed: boolean;
 }
 
 export interface Meta {
@@ -35,10 +41,27 @@ export interface DocInfo {
 export type Point = [number, number];
 export type Quad = [Point, Point, Point, Point];
 
+export interface Span {
+  start: number;
+  end: number;
+  fontKey: string;
+  fontName: string;
+  family: string;
+  bold: boolean;
+  italic: boolean;
+  size: number;
+  em: number;
+  color: [number, number, number];
+}
+
 export interface TextLine {
   id: number;
+  /** "page", or "form n g" for text inside a Form XObject. */
+  src: string;
   ops: number[];
   text: string;
+  /** Stretches of one style. */
+  spans: Span[];
   fontKey: string;
   fontName: string;
   family: string;
@@ -56,11 +79,26 @@ export interface TextLine {
   invisible: boolean;
   editable: boolean;
   note: string | null;
+  /** Character boundaries along the baseline from `origin`, in points (one more than characters). */
+  chars: number[];
+  /** The paragraph this line belongs to. */
+  block: number;
+}
+
+export interface Block {
+  id: number;
+  lines: number[];
+  text: string;
+  align: "left" | "right" | "center" | "justify";
+  width: number;
+  leading: number;
+  quad: Quad;
 }
 
 export interface PageText {
   revision: number;
   lines: TextLine[];
+  blocks: Block[];
   rotation: number;
 }
 
@@ -87,6 +125,8 @@ export interface FontSummary {
   pages: number[];
   systemMatch: string | null;
   previewable: boolean;
+  /** Embedded by Inq Studio from an installed font. */
+  added: boolean;
 }
 
 export interface EditResult {
@@ -98,6 +138,7 @@ export interface LineEdit {
   text?: string;
   size?: number;
   color?: [number, number, number];
+  font?: FontChoice;
   dx?: number;
   dy?: number;
   delete?: boolean;
@@ -142,6 +183,8 @@ export interface NewAnnot {
   opacity?: number;
 }
 
+export type SaveMode = "auto" | "full" | "incremental";
+
 export interface FontCatalog {
   families: string[];
   standard: string[];
@@ -152,16 +195,20 @@ export const api = {
   info: (id: number) => invoke<DocInfo>("doc_info", { id }),
   bytes: (id: number) => invoke<ArrayBuffer>("doc_bytes", { id }),
   close: (id: number) => invoke<void>("doc_close", { id }),
-  save: (id: number, path?: string) => invoke<DocState>("doc_save", { id, path: path ?? null }),
+  save: (id: number, path?: string, mode?: SaveMode) =>
+    invoke<DocState>("doc_save", { id, path: path ?? null, mode: mode ?? "auto" }),
   undo: (id: number) => invoke<DocState>("doc_undo", { id }),
   redo: (id: number) => invoke<DocState>("doc_redo", { id }),
+  historyGo: (id: number, steps: number) => invoke<DocState>("doc_history_go", { id, steps }),
   setMeta: (id: number, meta: Meta) => invoke<DocState>("doc_set_meta", { id, meta }),
   pageText: (id: number, page: number) => invoke<PageText>("page_text", { id, page }),
   fonts: (id: number) => invoke<FontSummary[]>("doc_fonts", { id }),
   fontProgram: (id: number, key: string) => invoke<ArrayBuffer>("font_program", { id, key }),
   systemFonts: () => invoke<FontCatalog>("system_fonts"),
-  editLine: (id: number, page: number, revision: number, line: number, edit: LineEdit) =>
-    invoke<EditResult>("text_edit", { id, page, revision, line, edit }),
+  editLines: (id: number, page: number, revision: number, lines: number[], edit: LineEdit) =>
+    invoke<EditResult>("text_edit", { id, page, revision, lines, edit }),
+  editBlock: (id: number, page: number, revision: number, block: number, text: string) =>
+    invoke<EditResult>("block_edit", { id, page, revision, block, text }),
   addText: (id: number, page: number, spec: NewText) => invoke<EditResult>("text_add", { id, page, spec }),
   rotate: (id: number, pages: number[], delta: number) => invoke<DocState>("pages_rotate", { id, pages, delta }),
   deletePages: (id: number, pages: number[]) => invoke<DocState>("pages_delete", { id, pages }),

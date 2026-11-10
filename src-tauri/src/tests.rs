@@ -353,23 +353,6 @@ fn real_file() {
     println!("edited line read back exactly: {found}; lines before {} after {}", scan.lines.len(), after.lines.len());
 }
 
-#[test]
-#[ignore]
-fn real_file_debug() {
-    let Ok(path) = std::env::var("INQ_TEST_PDF") else { return };
-    let doc = Document::load(&path).unwrap();
-    let ids = pages::page_ids(&doc);
-    let scan = scan_page(&doc, ids[0]).unwrap();
-    let line = scan.lines.iter().filter(|l| l.editable).max_by_key(|l| l.text.len()).unwrap();
-    let run = crate::interp::run_at(&scan.runs, line.ops[0]).unwrap();
-    let f = &run.font;
-    println!("font {} kind {} code_len {} subset {} enc {} tu {} widths? reverse {}", f.raw_name, f.kind_label(), f.code_len, f.subset, f.encoding_name, f.has_to_unicode, f.reverse.len());
-    for c in line.text.chars().take(4) {
-        let code = f.to_unicode.iter().find(|(_, t)| t.as_str() == c.to_string()).map(|(c, _)| *c);
-        println!("char U+{:04X} code {:?} width {:?} in reverse {}", c as u32, code, code.map(|c| f.width(c)), f.reverse.contains_key(&c.to_string()));
-    }
-}
-
 /// Writes a demo document: `INQ_DEMO_OUT=path cargo test make_demo -- --ignored`
 #[test]
 #[ignore]

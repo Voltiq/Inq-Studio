@@ -12,6 +12,8 @@ mod sysfonts;
 mod util;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_v2;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,12 +47,14 @@ pub fn run() {
             store::doc_save,
             store::doc_undo,
             store::doc_redo,
+            store::doc_history_go,
             store::doc_set_meta,
             store::page_text,
             store::doc_fonts,
             store::font_program,
             store::system_fonts,
             store::text_edit,
+            store::block_edit,
             store::text_add,
             store::pages_rotate,
             store::pages_delete,

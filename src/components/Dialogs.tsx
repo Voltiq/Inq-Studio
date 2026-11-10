@@ -54,6 +54,23 @@ export function SettingsDialog({
           value={settings.author}
           onChange={(e) => onChange({ ...settings, author: e.target.value })}
         />
+        <Select<Settings["saveMode"]>
+          label="Saving"
+          value={settings.saveMode}
+          onChange={(saveMode) => onChange({ ...settings, saveMode })}
+          options={[
+            { value: "auto", label: "Automatic: append changes to signed PDFs, rewrite others" },
+            { value: "full", label: "Always rewrite (smallest file)" },
+            { value: "incremental", label: "Always append changes (keeps the original bytes)" },
+          ]}
+          helper="Appending keeps the original file intact inside the new one, so digital signatures stay valid."
+        />
+        <Toggle
+          label="Snap moved text"
+          description="Moved lines snap to the edges and baselines of other lines. Hold Alt while dragging to move freely."
+          checked={settings.snap}
+          onChange={(snap) => onChange({ ...settings, snap })}
+        />
         <Toggle
           label="Outline text lines while editing"
           description="Shows a dashed box around every editable line when the Edit text tool is active."

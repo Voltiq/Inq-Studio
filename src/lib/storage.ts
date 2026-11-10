@@ -12,6 +12,10 @@ export interface Settings {
   /** Colour per markup tool. */
   toolColors: Record<string, string>;
   inkWidth: number;
+  /** auto: incremental for signed documents, full otherwise. */
+  saveMode: "auto" | "full" | "incremental";
+  /** Snap moved text to other lines' edges and baselines. */
+  snap: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -29,6 +33,8 @@ export const DEFAULT_SETTINGS: Settings = {
     rect: "#e5484d",
   },
   inkWidth: 2,
+  saveMode: "auto",
+  snap: true,
 };
 
 const SETTINGS_KEY = "inq.settings";

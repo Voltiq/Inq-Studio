@@ -5,6 +5,7 @@ import { Kbd, Spinner } from "./ui/Feedback";
 import {
   api,
   type AnnotInfo,
+  type Block,
   type FontChoice,
   type FontSummary,
   type LineEdit,
@@ -22,7 +23,17 @@ import type { Tool, ZoomMode } from "../lib/types";
 import { cx } from "../lib/utils";
 
 export type Selection =
-  | { kind: "line"; page: number; line: TextLine; revision: number; editing: boolean }
+  | {
+      kind: "lines";
+      page: number;
+      /** Selected lines, all on `page`. */
+      lines: TextLine[];
+      revision: number;
+      /** What is being edited on the page: one line, or the paragraph of the first line. */
+      editing: null | "line" | "block";
+      /** The paragraph of the first selected line. */
+      block: Block | null;
+    }
   | { kind: "annot"; page: number; annot: AnnotInfo }
   | null;
 
@@ -33,7 +44,8 @@ export interface TextStyle {
 }
 
 export interface ViewerActions {
-  editLine: (page: number, line: number, revision: number, edit: LineEdit) => Promise<boolean>;
+  editLines: (page: number, lines: number[], revision: number, edit: LineEdit) => Promise<boolean>;
+  editBlock: (page: number, block: number, revision: number, text: string) => Promise<boolean>;
   addText: (page: number, spec: NewText) => Promise<boolean>;
   addAnnot: (page: number, annot: NewAnnot) => Promise<boolean>;
 }
@@ -49,6 +61,7 @@ const MAX_CANVAS_PIXELS = 16_000_000;
 const MARKUP: Tool[] = ["highlight", "underline", "strikeout"];
 /** Annotations that sit on text are managed from the Comments list, so they don't block text selection. */
 const TEXT_MARKUP = new Set(["Highlight", "Underline", "StrikeOut", "Squiggly", "Link", "Widget", "Popup"]);
+const SNAP_PX = 6;
 
 export function Viewer({
   docId,
@@ -62,6 +75,7 @@ export function Viewer({
   navigate,
   tool,
   showLineBoxes,
+  snap,
   fonts,
   selection,
   onSelect,
@@ -84,6 +98,7 @@ export function Viewer({
   navigate: { page: number; nonce: number } | null;
   tool: Tool;
   showLineBoxes: boolean;
+  snap: boolean;
   fonts: FontSummary[] | null;
   selection: Selection;
   onSelect: (s: Selection) => void;
@@ -126,7 +141,6 @@ export function Viewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdf]);
 
-  // Container size.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -158,7 +172,6 @@ export function Viewer({
     if (el && sc) sc.scrollTop = el.offsetTop + anchor.current.frac * el.offsetHeight - PAD;
   }, [scale]);
 
-  // Which pages are near the viewport.
   useEffect(() => {
     const root = scrollRef.current;
     if (!root) return;
@@ -180,7 +193,6 @@ export function Viewer({
     return () => io.disconnect();
   }, [sizes.length, pdf]);
 
-  // Track the current page while scrolling.
   const onScroll = useCallback(() => {
     const sc = scrollRef.current;
     if (!sc) return;
@@ -196,7 +208,6 @@ export function Viewer({
     if (current !== page) onPage(current);
   }, [page, onPage]);
 
-  // Jump to a page on request.
   useEffect(() => {
     if (!navigate) return;
     const el = pageRefs.current[navigate.page];
@@ -207,7 +218,6 @@ export function Viewer({
     }
   }, [navigate]);
 
-  // Ctrl + wheel zooms.
   useEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;
@@ -221,7 +231,6 @@ export function Viewer({
     return () => sc.removeEventListener("wheel", onWheel);
   }, [scale, onZoom]);
 
-  // Hand tool panning.
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
     if (tool !== "hand" && e.button !== 1) return;
@@ -275,6 +284,7 @@ export function Viewer({
                 scale={scale}
                 tool={tool}
                 showLineBoxes={showLineBoxes}
+                snap={snap}
                 fonts={fonts}
                 selection={selection}
                 onSelect={onSelect}
@@ -295,7 +305,7 @@ export function Viewer({
 }
 
 // ---------------------------------------------------------------------------
-// One page: canvas, text layer and the overlay for the active tool.
+// Geometry
 // ---------------------------------------------------------------------------
 
 function fontStackForChoice(docId: number, choice: FontChoice, fonts: FontSummary[] | null): Promise<string> {
@@ -319,7 +329,7 @@ interface Geometry {
   bbox: [number, number, number, number];
 }
 
-function lineGeometry(vp: PageViewport, q: Quad): Geometry {
+function quadGeometry(vp: PageViewport, q: Quad): Geometry {
   const v = q.map((p) => vp.convertToViewportPoint(p[0], p[1]) as [number, number]);
   const [bl, br, , tl] = v;
   const width = Math.hypot(br[0] - bl[0], br[1] - bl[1]);
@@ -337,6 +347,26 @@ function lineGeometry(vp: PageViewport, q: Quad): Geometry {
   };
 }
 
+const lerp = (a: Point, b: Point, t: number): Point => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+
+/** The part of a line's quad between two character boundaries. */
+function partialQuad(line: TextLine, from: number, to: number): Quad {
+  const total = line.chars[line.chars.length - 1] || 1;
+  const a = line.chars[from] / total;
+  const b = line.chars[to] / total;
+  const [bl, br, tr, tl] = line.quad;
+  return [lerp(bl, br, a), lerp(bl, br, b), lerp(tl, tr, b), lerp(tl, tr, a)];
+}
+
+interface Caret {
+  line: number;
+  at: number;
+}
+
+// ---------------------------------------------------------------------------
+// One page: canvas, text layer and the overlay for the active tool.
+// ---------------------------------------------------------------------------
+
 function PageView({
   docId,
   revision,
@@ -345,6 +375,7 @@ function PageView({
   scale,
   tool,
   showLineBoxes,
+  snap,
   fonts,
   selection,
   onSelect,
@@ -362,6 +393,7 @@ function PageView({
   scale: number;
   tool: Tool;
   showLineBoxes: boolean;
+  snap: boolean;
   fonts: FontSummary[] | null;
   selection: Selection;
   onSelect: (s: Selection) => void;
@@ -438,7 +470,7 @@ function PageView({
     };
   }, [pdf, index, scale, tool]);
 
-  // Text lines from the content stream, for editing and markup.
+  // Lines and paragraphs from the content streams, for editing and markup.
   useEffect(() => {
     if (!needLines) return;
     let cancelled = false;
@@ -451,7 +483,6 @@ function PageView({
     };
   }, [docId, revision, index, needLines]);
 
-  // Annotations for the select tool.
   useEffect(() => {
     if (tool !== "select") return;
     let cancelled = false;
@@ -464,7 +495,6 @@ function PageView({
     };
   }, [docId, revision, index, tool]);
 
-  // Search hit rectangles.
   useEffect(() => {
     if (!hits.length || !vp) {
       setHitRects([]);
@@ -485,12 +515,7 @@ function PageView({
         const r = vp.convertToViewportRectangle([x0, f - size * 0.22, x1, f + size * 0.82]) as number[];
         return [
           {
-            r: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.abs(r[2] - r[0]), Math.abs(r[3] - r[1])] as [
-              number,
-              number,
-              number,
-              number,
-            ],
+            r: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.abs(r[2] - r[0]), Math.abs(r[3] - r[1])] as [number, number, number, number],
             current: h.current,
           },
         ];
@@ -502,8 +527,8 @@ function PageView({
     };
   }, [hits, vp, pdf, index]);
 
-  const lines = text?.lines ?? [];
-  const geo = useMemo(() => (vp ? lines.map((l) => lineGeometry(vp, l.quad)) : []), [vp, lines]);
+  const lines = useMemo(() => text?.lines ?? [], [text]);
+  const geo = useMemo(() => (vp ? lines.map((l) => quadGeometry(vp, l.quad)) : []), [vp, lines]);
 
   const toPdf = useCallback((x: number, y: number): Point => vp!.convertToPdfPoint(x, y) as Point, [vp]);
   const local = (e: React.PointerEvent | React.MouseEvent): [number, number] => {
@@ -511,14 +536,89 @@ function PageView({
     return [e.clientX - r.left, e.clientY - r.top];
   };
 
+  const sel = selection?.kind === "lines" && selection.page === index ? selection : null;
+  const selectedIds = useMemo(() => new Set(sel?.lines.map((l) => l.id) ?? []), [sel]);
+  // A selection made against an older scan of this page no longer matches its lines.
+  const stale = sel && text && sel.revision !== text.revision;
+
+  const selectLines = useCallback(
+    (ids: number[], editing: null | "line" | "block" = null) => {
+      if (!text || !ids.length) {
+        onSelect(null);
+        return;
+      }
+      const picked = ids.map((i) => text.lines[i]).filter(Boolean);
+      const block = text.blocks[picked[0].block] ?? null;
+      onSelect({ kind: "lines", page: index, lines: picked, revision: text.revision, editing, block });
+    },
+    [text, index, onSelect],
+  );
+
   // ----- Interaction state -----
-  const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
-  const [move, setMove] = useState<{ id: number; x0: number; y0: number; dx: number; dy: number } | null>(null);
+  const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
+  const [move, setMove] = useState<{ x0: number; y0: number; dx: number; dy: number; free: boolean } | null>(null);
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const snapTargets = useRef<{ xs: number[]; ys: number[]; left: number; base: number } | null>(null);
   const [ink, setInk] = useState<[number, number][] | null>(null);
+  const [mark, setMark] = useState<{ a: Caret; b: Caret; x0: number; y0: number } | null>(null);
   const [pendingText, setPendingText] = useState<{ x: number; y: number } | null>(null);
   const [pendingNote, setPendingNote] = useState<{ x: number; y: number } | null>(null);
 
-  const selectedLine = selection?.kind === "line" && selection.page === index ? selection : null;
+  /** The character boundary nearest a point, on the line under it (or the closest line). */
+  const caretAt = useCallback(
+    (x: number, y: number): Caret | null => {
+      if (!vp) return null;
+      let best = -1;
+      let bestD = 28;
+      geo.forEach((g, i) => {
+        if (lines[i].invisible) return;
+        const [x0, y0, x1, y1] = g.bbox;
+        const dx = x < x0 ? x0 - x : x > x1 ? x - x1 : 0;
+        const dy = y < y0 ? y0 - y : y > y1 ? y - y1 : 0;
+        const d = Math.hypot(dx, dy * 2);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      if (best < 0) return null;
+      const l = lines[best];
+      const p = toPdf(x, y);
+      const a = (l.angle * Math.PI) / 180;
+      const s = (p[0] - l.origin[0]) * Math.cos(a) + (p[1] - l.origin[1]) * Math.sin(a);
+      let at = 0;
+      let d = Infinity;
+      l.chars.forEach((c, i) => {
+        if (Math.abs(c - s) < d) {
+          d = Math.abs(c - s);
+          at = i;
+        }
+      });
+      return { line: best, at };
+    },
+    [vp, geo, lines, toPdf],
+  );
+
+  /** Quads covering the text between two carets, line by line. */
+  const markQuads = useCallback(
+    (a: Caret, b: Caret): Quad[] => {
+      const [s, e] = a.line < b.line || (a.line === b.line && a.at <= b.at) ? [a, b] : [b, a];
+      const out: Quad[] = [];
+      for (let li = s.line; li <= e.line; li++) {
+        const l = lines[li];
+        if (!l || l.invisible) continue;
+        const n = l.chars.length - 1;
+        let from = li === s.line ? s.at : 0;
+        let to = li === e.line ? e.at : n;
+        const chars = [...l.text];
+        while (from < to && chars[from] === " ") from++;
+        while (to > from && chars[to - 1] === " ") to--;
+        if (to > from) out.push(partialQuad(l, from, to));
+      }
+      return out;
+    },
+    [lines],
+  );
 
   const onOverlayDown = (e: React.PointerEvent) => {
     if (e.button !== 0 || !vp) return;
@@ -538,19 +638,47 @@ function PageView({
       setInk([[x, y]]);
       return;
     }
-    if (tool === "rect" || MARKUP.includes(tool)) {
+    if (MARKUP.includes(tool)) {
       overlayRef.current!.setPointerCapture(e.pointerId);
-      setDrag({ x0: x, y0: y, x1: x, y1: y });
+      const c = caretAt(x, y);
+      if (c) setMark({ a: c, b: c, x0: x, y0: y });
       return;
     }
-    if (tool === "edit" && e.target === overlayRef.current) onSelect(null);
+    if (tool === "rect" || (tool === "edit" && e.target === overlayRef.current)) {
+      overlayRef.current!.setPointerCapture(e.pointerId);
+      setDrag({ x0: x, y0: y, x1: x, y1: y, add: e.shiftKey || e.ctrlKey });
+    }
   };
 
   const onOverlayMove = (e: React.PointerEvent) => {
     const [x, y] = local(e);
     if (ink) setInk((p) => (p ? [...p, [x, y]] : p));
     if (drag) setDrag((d) => (d ? { ...d, x1: x, y1: y } : d));
-    if (move) setMove((m) => (m ? { ...m, dx: x - m.x0, dy: y - m.y0 } : m));
+    if (mark) {
+      const c = caretAt(x, y);
+      if (c) setMark((m) => (m ? { ...m, b: c } : m));
+    }
+    if (move) {
+      let dx = x - move.x0;
+      let dy = y - move.y0;
+      const t = snapTargets.current;
+      let gx: number | null = null;
+      let gy: number | null = null;
+      if (t && snap && !e.altKey) {
+        const nx = t.xs.find((v) => Math.abs(t.left + dx - v) < SNAP_PX);
+        if (nx !== undefined) {
+          dx = nx - t.left;
+          gx = nx;
+        }
+        const ny = t.ys.find((v) => Math.abs(t.base + dy - v) < SNAP_PX);
+        if (ny !== undefined) {
+          dy = ny - t.base;
+          gy = ny;
+        }
+      }
+      setGuides({ x: gx, y: gy });
+      setMove({ ...move, dx, dy });
+    }
   };
 
   const onOverlayUp = async () => {
@@ -565,6 +693,20 @@ function PageView({
           width: inkWidth,
           author,
         });
+      }
+    }
+    if (mark && vp) {
+      const m = mark;
+      setMark(null);
+      let quads = markQuads(m.a, m.b);
+      if (m.a.line === m.b.line && m.a.at === m.b.at) {
+        // A click marks the whole line under it.
+        const l = lines[m.a.line];
+        const [x0, y0, x1, y1] = geo[m.a.line].bbox;
+        quads = l && m.x0 >= x0 - 2 && m.x0 <= x1 + 2 && m.y0 >= y0 - 2 && m.y0 <= y1 + 2 ? [l.quad] : [];
+      }
+      if (quads.length) {
+        await actions.addAnnot(index, { kind: tool as "highlight" | "underline" | "strikeout", quads, color: hexToRgb(markColor), author });
       }
     }
     if (drag && vp) {
@@ -583,42 +725,58 @@ function PageView({
             author,
           });
         }
-      } else if (MARKUP.includes(tool)) {
-        const tiny = r - l < 3 && b - t < 3;
-        const picked = lines.filter((ln, i) => {
-          const g = geo[i];
-          if (!g || ln.invisible) return false;
-          const [gx0, gy0, gx1, gy1] = g.bbox;
-          return tiny ? l >= gx0 && l <= gx1 && t >= gy0 && t <= gy1 : gx0 < r && gx1 > l && gy0 < b && gy1 > t;
-        });
-        if (picked.length) {
-          await actions.addAnnot(index, {
-            kind: tool as "highlight" | "underline" | "strikeout",
-            quads: picked.map((p) => p.quad),
-            color: hexToRgb(markColor),
-            author,
-          });
+      } else if (tool === "edit") {
+        if (r - l < 3 && b - t < 3) {
+          if (!d.add) onSelect(null);
+        } else {
+          const hit = geo
+            .map((g, i) => [g, i] as const)
+            .filter(([g]) => g.bbox[0] < r && g.bbox[2] > l && g.bbox[1] < b && g.bbox[3] > t)
+            .map(([, i]) => i);
+          const keep = d.add && sel && !stale ? sel.lines.map((x) => x.id) : [];
+          selectLines([...new Set([...keep, ...hit])]);
         }
       }
     }
     if (move) {
       const m = move;
       setMove(null);
-      if (Math.hypot(m.dx, m.dy) > 2 && vp && text) {
+      setGuides({ x: null, y: null });
+      snapTargets.current = null;
+      if (Math.hypot(m.dx, m.dy) > 1 && vp && text && sel) {
         const a = toPdf(m.x0, m.y0);
         const b = toPdf(m.x0 + m.dx, m.y0 + m.dy);
-        await actions.editLine(index, m.id, text.revision, { dx: b[0] - a[0], dy: b[1] - a[1] });
+        await actions.editLines(index, sel.lines.map((l) => l.id), text.revision, { dx: b[0] - a[0], dy: b[1] - a[1] });
       }
     }
+  };
+
+  /** Edges and baselines of other lines to snap a moved line to. */
+  const startMove = (l: TextLine, x: number, y: number, free: boolean) => {
+    if (!vp) return;
+    const own = geo[l.id];
+    const base = (vp.convertToViewportPoint(l.origin[0], l.origin[1]) as number[])[1];
+    const xs: number[] = [];
+    const ys: number[] = [];
+    lines.forEach((o, i) => {
+      if (selectedIds.has(o.id) || Math.abs(geo[i].angle) > 0.5 || o.invisible) return;
+      xs.push(geo[i].bbox[0]);
+      ys.push((vp.convertToViewportPoint(o.origin[0], o.origin[1]) as number[])[1]);
+    });
+    snapTargets.current = Math.abs(own.angle) > 0.5 ? null : { xs, ys, left: own.bbox[0], base };
+    setMove({ x0: x, y0: y, dx: 0, dy: 0, free });
   };
 
   const overlayClass = cx(
     "overlay",
     (tool === "text" || tool === "note" || tool === "ink" || tool === "rect" || MARKUP.includes(tool)) && "is-crosshair",
-    tool === "text" && "is-text",
+    (tool === "text" || MARKUP.includes(tool)) && "is-text",
   );
-
   const showOverlay = tool !== "select" && tool !== "hand";
+  const markPreview = mark ? markQuads(mark.a, mark.b) : [];
+  const editingBlock = sel?.editing === "block" && sel.block && !stale ? sel.block : null;
+  const editingLine = sel?.editing === "line" && !stale ? sel.lines[0] : null;
+  const hiddenLines = new Set(editingBlock ? editingBlock.lines : editingLine ? [editingLine.id] : []);
 
   return (
     <>
@@ -631,11 +789,7 @@ function PageView({
       <div ref={textRef} className="textLayer" hidden={tool !== "select"} />
 
       {hitRects.map((h, i) => (
-        <div
-          key={i}
-          className={cx("search-hit", h.current && "is-current")}
-          style={{ left: h.r[0], top: h.r[1], width: h.r[2], height: h.r[3] }}
-        />
+        <div key={i} className={cx("search-hit", h.current && "is-current")} style={{ left: h.r[0], top: h.r[1], width: h.r[2], height: h.r[3] }} />
       ))}
 
       {tool === "select" && vp && (
@@ -675,22 +829,26 @@ function PageView({
             setInk(null);
             setDrag(null);
             setMove(null);
+            setMark(null);
+            setGuides({ x: null, y: null });
           }}
         >
-          {needLines &&
+          {tool === "edit" &&
             lines.map((l, i) => {
               const g = geo[i];
-              if (!g) return null;
-              const isSel = selectedLine?.line.id === l.id;
-              if (isSel && selectedLine.editing) return null;
-              const moving = move?.id === l.id ? move : null;
+              if (!g || hiddenLines.has(l.id)) return null;
+              const isSel = selectedIds.has(l.id) && !stale;
+              const moving = isSel && move ? move : null;
+              const inBlock = sel && !stale && sel.block && sel.lines.length === 1 && sel.block.lines.length > 1 && sel.block.lines.includes(l.id) && !isSel;
+              const styles = l.spans.length > 1 ? ` · ${l.spans.length} styles` : "";
               return (
                 <div
                   key={`${text?.revision}-${l.id}`}
                   className={cx(
                     "line-box",
-                    tool === "edit" && showLineBoxes && "is-outlined",
+                    showLineBoxes && "is-outlined",
                     isSel && "is-selected",
+                    inBlock && "is-in-block",
                     l.invisible && "is-invisible",
                     !l.editable && "is-locked",
                     moving && "is-dragging",
@@ -702,42 +860,94 @@ function PageView({
                     height: g.height,
                     transform: g.angle ? `rotate(${g.angle}deg)` : undefined,
                   }}
-                  data-tooltip={tool === "edit" ? (l.note ?? `${l.family}${l.bold ? " Bold" : ""}${l.italic ? " Italic" : ""} · ${l.em.toFixed(1)} pt`) : undefined}
+                  data-tooltip={l.note ?? `${l.family}${l.bold ? " Bold" : ""}${l.italic ? " Italic" : ""} · ${l.em.toFixed(1)} pt${styles}`}
                   onPointerDown={(e) => {
-                    if (tool !== "edit" || e.button !== 0) return;
+                    if (e.button !== 0 || !text) return;
                     e.stopPropagation();
+                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                      const ids = sel && !stale ? sel.lines.map((x) => x.id) : [];
+                      selectLines(ids.includes(l.id) ? ids.filter((x) => x !== l.id) : [...ids, l.id]);
+                      return;
+                    }
                     if (!isSel) {
-                      onSelect({ kind: "line", page: index, line: l, revision: text!.revision, editing: false });
+                      selectLines([l.id]);
                       return;
                     }
                     if (!l.editable) return;
                     const [x, y] = local(e);
                     overlayRef.current!.setPointerCapture(e.pointerId);
-                    setMove({ id: l.id, x0: x, y0: y, dx: 0, dy: 0 });
+                    startMove(l, x, y, e.altKey);
                   }}
                   onDoubleClick={() => {
-                    if (tool === "edit" && l.editable)
-                      onSelect({ kind: "line", page: index, line: l, revision: text!.revision, editing: true });
+                    if (!l.editable || !text) return;
+                    const block = text.blocks[l.block];
+                    selectLines([l.id], block && block.lines.length > 1 ? "block" : "line");
                   }}
                 />
               );
             })}
 
-          {selectedLine?.editing && vp && (
+          {MARKUP.includes(tool) &&
+            markPreview.map((q, i) => {
+              const g = quadGeometry(vp, q);
+              return (
+                <div
+                  key={i}
+                  className="mark-preview"
+                  style={{
+                    left: g.left,
+                    top: g.top,
+                    width: g.width,
+                    height: g.height,
+                    transform: g.angle ? `rotate(${g.angle}deg)` : undefined,
+                    background: tool === "highlight" ? markColor : undefined,
+                    borderBottom: tool === "underline" ? `2px solid ${markColor}` : undefined,
+                    backgroundImage: tool === "strikeout" ? `linear-gradient(transparent 52%, ${markColor} 52%, ${markColor} 60%, transparent 60%)` : undefined,
+                  }}
+                />
+              );
+            })}
+
+          {guides.x !== null && <div className="snap-guide is-vertical" style={{ left: guides.x }} />}
+          {guides.y !== null && <div className="snap-guide is-horizontal" style={{ top: guides.y }} />}
+
+          {editingLine && (
             <InlineEditor
               docId={docId}
-              line={selectedLine.line}
-              geometry={lineGeometry(vp, selectedLine.line.quad)}
+              line={editingLine}
+              geometry={quadGeometry(vp, editingLine.quad)}
               scale={scale}
               fonts={fonts}
-              onCancel={() => onSelect({ ...selectedLine, editing: false })}
+              onCancel={() => sel && onSelect({ ...sel, editing: null })}
               onCommit={async (value) => {
-                if (value === selectedLine.line.text) {
-                  onSelect({ ...selectedLine, editing: false });
+                if (!sel) return;
+                if (value === editingLine.text) {
+                  onSelect({ ...sel, editing: null });
                   return;
                 }
-                const ok = await actions.editLine(index, selectedLine.line.id, selectedLine.revision, { text: value });
-                if (!ok) onSelect({ ...selectedLine, editing: false });
+                const ok = await actions.editLines(index, [editingLine.id], sel.revision, { text: value });
+                if (!ok) onSelect({ ...sel, editing: null });
+              }}
+            />
+          )}
+
+          {editingBlock && text && (
+            <BlockEditor
+              docId={docId}
+              block={editingBlock}
+              first={text.lines[editingBlock.lines[0]]}
+              geometry={quadGeometry(vp, editingBlock.quad)}
+              scale={scale}
+              fonts={fonts}
+              onCancel={() => sel && onSelect({ ...sel, editing: null })}
+              onCommit={async (value) => {
+                if (!sel) return;
+                if (value === editingBlock.text) {
+                  onSelect({ ...sel, editing: null });
+                  return;
+                }
+                const ok = await actions.editBlock(index, editingBlock.id, sel.revision, value);
+                if (!ok) onSelect({ ...sel, editing: null });
               }}
             />
           )}
@@ -750,7 +960,7 @@ function PageView({
                 top: Math.min(drag.y0, drag.y1),
                 width: Math.abs(drag.x1 - drag.x0),
                 height: Math.abs(drag.y1 - drag.y0),
-                borderColor: markColor,
+                borderColor: tool === "rect" ? markColor : undefined,
               }}
             />
           )}
@@ -801,13 +1011,7 @@ function PageView({
               onCancel={() => setPendingNote(null)}
               onSave={async (contents) => {
                 const [x, y] = toPdf(pendingNote.x, pendingNote.y);
-                const ok = await actions.addAnnot(index, {
-                  kind: "note",
-                  rect: [x, y, x, y],
-                  color: hexToRgb(markColor),
-                  contents,
-                  author,
-                });
+                const ok = await actions.addAnnot(index, { kind: "note", rect: [x, y, x, y], color: hexToRgb(markColor), contents, author });
                 if (ok) setPendingNote(null);
               }}
             />
@@ -861,7 +1065,6 @@ function InlineEditor({
     ref.current?.focus();
     ref.current?.select();
   }, []);
-  const px = line.em * scale;
   const commit = () => {
     if (done.current) return;
     done.current = true;
@@ -882,7 +1085,7 @@ function InlineEditor({
           height: g.height,
           transform: g.angle ? `rotate(${g.angle}deg)` : undefined,
           fontFamily: stack,
-          fontSize: px,
+          fontSize: line.em * scale,
           fontWeight: line.bold ? 700 : 400,
           fontStyle: line.italic ? "italic" : "normal",
           lineHeight: `${g.height}px`,
@@ -901,7 +1104,86 @@ function InlineEditor({
         onPointerDown={(e) => e.stopPropagation()}
       />
       <div className="inline-hint" style={{ left: g.left, top: g.top + g.height + 10 }}>
-        <Kbd>Enter</Kbd> save in {line.family || line.fontName} <Kbd>Esc</Kbd> cancel
+        <Kbd>Enter</Kbd> save in {line.family || line.fontName}
+        {line.spans.length > 1 ? " (styles kept)" : ""} <Kbd>Esc</Kbd> cancel
+      </div>
+    </>
+  );
+}
+
+function BlockEditor({
+  docId,
+  block,
+  first,
+  geometry: g,
+  scale,
+  fonts,
+  onCommit,
+  onCancel,
+}: {
+  docId: number;
+  block: Block;
+  first: TextLine;
+  geometry: Geometry;
+  scale: number;
+  fonts: FontSummary[] | null;
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [value, setValue] = useState(block.text);
+  const done = useRef(false);
+  const stack = useFontStack(docId, first.fontKey, fonts, first.family);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+  const commit = () => {
+    if (done.current) return;
+    done.current = true;
+    onCommit(value);
+  };
+  return (
+    <>
+      <textarea
+        ref={ref}
+        className="inline-editor block-editor"
+        value={value}
+        spellCheck={false}
+        aria-label="Edit paragraph"
+        style={{
+          left: g.left,
+          top: g.top,
+          width: block.width * scale + 4,
+          minHeight: g.height,
+          transform: g.angle ? `rotate(${g.angle}deg)` : undefined,
+          fontFamily: stack,
+          fontSize: first.em * scale,
+          fontWeight: first.bold ? 700 : 400,
+          fontStyle: first.italic ? "italic" : "normal",
+          lineHeight: `${block.leading * scale}px`,
+          textAlign: block.align,
+          color: rgbToHex(first.color),
+        }}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            commit();
+          }
+          if (e.key === "Escape") {
+            done.current = true;
+            onCancel();
+          }
+        }}
+        onBlur={commit}
+        onPointerDown={(e) => e.stopPropagation()}
+      />
+      <div className="inline-hint" style={{ left: g.left, top: g.top - 32 }}>
+        Paragraph · {block.lines.length} lines · {block.align} <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> reflow and save <Kbd>Esc</Kbd> cancel
       </div>
     </>
   );
@@ -936,22 +1218,16 @@ function NewTextEditor({
     };
   }, [docId, style.font, fonts]);
   useEffect(() => {
-    // Focus after the pointer-down that created the editor has finished.
     const t = setTimeout(() => ref.current?.focus(), 0);
     return () => clearTimeout(t);
   }, []);
   const bold = style.font.kind === "system" ? style.font.bold : style.font.kind === "standard" && /Bold/.test(style.font.name);
-  const italic =
-    style.font.kind === "system" ? style.font.italic : style.font.kind === "standard" && /Italic|Oblique/.test(style.font.name);
+  const italic = style.font.kind === "system" ? style.font.italic : style.font.kind === "standard" && /Italic|Oblique/.test(style.font.name);
   const finish = () => {
     if (done.current) return;
-    if (!value.trim()) {
-      done.current = true;
-      onCancel();
-      return;
-    }
     done.current = true;
-    onCommit(value);
+    if (!value.trim()) onCancel();
+    else onCommit(value);
   };
   return (
     <>
@@ -1011,11 +1287,7 @@ function NotePopover({
     return () => clearTimeout(t);
   }, []);
   return (
-    <div
-      className="note-pop"
-      style={{ left: at.x, top: at.y, borderTop: `3px solid ${color}` }}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
+    <div className="note-pop" style={{ left: at.x, top: at.y, borderTop: `3px solid ${color}` }} onPointerDown={(e) => e.stopPropagation()}>
       <textarea
         ref={ref}
         value={value}

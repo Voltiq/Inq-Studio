@@ -244,7 +244,6 @@ pub fn glyph_to_unicode(name: &str) -> Option<String> {
 }
 
 /// The glyph name for a character, for writing `/Differences`.
-#[cfg(test)]
 pub fn unicode_to_glyph(c: char) -> String {
     if c.is_ascii_alphabetic() {
         return c.to_string();

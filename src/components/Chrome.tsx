@@ -22,6 +22,7 @@ import {
   Save,
   Search,
   Settings as SettingsIcon,
+  ShieldCheck,
   Square,
   Strikethrough,
   Sun,
@@ -49,6 +50,7 @@ export interface HudInfo {
   version: string;
   dirty: boolean;
   encrypted: boolean;
+  signed: boolean;
 }
 
 export function TopBar({
@@ -121,6 +123,11 @@ export function TopBar({
             </span>
             <span className="hud-sep" aria-hidden="true" />
             <span className="hud-stat">PDF {hud.version}</span>
+            {hud.signed && (
+              <Lozenge appearance="success" icon={ShieldCheck} title="Saving appends changes, so existing signatures stay valid">
+                signed
+              </Lozenge>
+            )}
             {hud.encrypted && (
               <Lozenge appearance="warning" icon={Lock} title="Saved copies are written without the password">
                 was protected
@@ -244,11 +251,11 @@ export const TOOL_KEYS: Record<string, Tool> = Object.fromEntries(
 export const TOOL_HINTS: Record<Tool, string> = {
   select: "Drag across text to select it, then copy. Click a note or drawing to inspect it.",
   hand: "Drag to scroll the document.",
-  edit: "Click a line to select it, double-click to rewrite it in its own font. Drag a selected line to move it.",
+  edit: "Click a line to select it (Shift-click or drag a box for more). Double-click to rewrite a line or a whole paragraph. Drag selected lines to move them.",
   text: "Click on the page where the new text should start.",
-  highlight: "Click a line or drag across lines to highlight them.",
-  underline: "Click a line or drag across lines to underline them.",
-  strikeout: "Click a line or drag across lines to strike them out.",
+  highlight: "Drag across text to highlight exactly those characters, or click a line to highlight all of it.",
+  underline: "Drag across text to underline it, or click a line to underline all of it.",
+  strikeout: "Drag across text to strike it out, or click a line to strike out all of it.",
   note: "Click where the sticky note should go.",
   ink: "Draw on the page. Each stroke becomes an ink annotation.",
   rect: "Drag to draw a rectangle.",

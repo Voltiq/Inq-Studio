@@ -8,7 +8,7 @@ streams — real, selectable, searchable text, not a patch painted over the page
 
 ---
 
-## v0.1 — Foundation (this build, 2026-11-10)
+## v0.1 — Foundation (2026-11-10)
 
 ### PDF engine (Rust)
 - [x] Tauri 2 app, `com.voltiq.inq-studio`, window starts hidden and shows once themed (no white flash)
@@ -60,10 +60,10 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - [x] Unsaved-changes guard on closing a tab or the window, toasts, settings, keyboard shortcuts
 
 ### Known limits of v0.1
-- Editing works line by line: longer text does not reflow into the next line yet
-- A line that switches fonts mid-way reads as separate lines (each still editable)
-- Text inside Form XObjects is shown but not listed for editing
-- Saving a password-protected PDF writes it without the password
+- ~~Editing works line by line: longer text does not reflow into the next line yet~~ (fixed in v0.2)
+- ~~A line that switches fonts mid-way reads as separate lines~~ (fixed in v0.2)
+- ~~Text inside Form XObjects is shown but not listed for editing~~ (fixed in v0.2)
+- Saving a password-protected PDF writes it without the password (unless saved incrementally, v0.2)
 - Undo keeps whole-document snapshots, and every edit re-renders from fresh bytes (fine for everyday documents,
   heavy for very large ones)
 - UI interactions are type-checked and the app was launched against a generated document; there are no
@@ -71,20 +71,51 @@ streams — real, selectable, searchable text, not a patch painted over the page
 
 ---
 
-## v0.2 — Editing depth
+## v0.2 — Editing depth (this build, 2026-11-10)
 
-- [ ] Paragraph model: detect paragraphs, reflow and re-wrap with the font's own metrics when text grows or shrinks
-- [ ] Rich lines: keep bold / italic words and font switches inside one edited line
-- [ ] Text inside Form XObjects (common in exported and flattened PDFs)
-- [ ] Character-level selection for highlight, underline and strike-out
-- [ ] Extend simple (non-CID) subset fonts by giving new glyphs unused codes through `/Differences`
-- [ ] CFF / Type 1C programs: pull glyphs from embedded CFF, and CID-keyed CFF extension
-- [ ] OpenType-CFF installed fonts tested end to end
-- [ ] Merge successive Inq subsets of the same typeface on save (smaller files)
-- [ ] Edit several selected lines at once (size, colour, font)
-- [ ] Text alignment helpers: snap moved text to neighbouring baselines and margins
-- [ ] History panel with named undo steps
-- [ ] Incremental save (append-only) so existing signatures stay valid
+### Engine (Rust)
+- [x] **Paragraph model**: lines that stack with even leading and aligned edges become paragraphs (left, right,
+      centred or justified, first-line indent kept); words broken with a hyphen at a line end are rejoined
+- [x] **Reflow**: a paragraph edit re-wraps the text to its column with the fonts' own advance widths, keeps the
+      alignment (justified lines are spread with `TJ` adjustments) and the leading; `\n` starts a new line
+- [x] **Rich lines**: runs that continue one baseline form one line even when font, size or colour change; each
+      new character takes the style of the text it replaces (case-insensitive alignment), so bold words stay bold
+- [x] **Text inside Form XObjects**: followed through `Do` (matrix and resources applied), listed and edited in
+      their own stream; text drawn by a form used several times is flagged
+- [x] Character positions for every line (exact boundaries from the content stream, `TJ` gaps included)
+- [x] Simple fonts with a CFF program grow through `/Differences`: free codes get the glyphs by name, with widths
+- [x] OpenType programs (CFF or TrueType, SID- or CID-keyed) grow through their cmap; CID-keyed CFF codes are CIDs
+- [x] OpenType-CFF fonts embedded end to end (tested with BrutalType and the CID-keyed GenEi Gothic)
+- [x] **One growing subset per installed typeface**: TrueType faces are embedded once per document with
+      `/CIDToGIDMap`, so later edits add glyphs to the same font instead of creating a new one
+- [x] Edit several lines in one step (size, colour, font, move, delete), and change a line's font
+- [x] Labelled undo history with jumps to any step
+- [x] **Incremental save**: changes appended after the original bytes (`/Prev` chain), automatic for signed PDFs,
+      so existing signatures stay valid; full rewrite otherwise
+- [x] 29 tests (13 new), plus opt-in real-file runs: on a 67-page manual, 87 multi-line paragraphs and 105
+      mixed-style lines were found, and a paragraph reflowed with an added sentence read back exactly
+
+### App
+- [x] **Paragraph editor**: double-click a line in a paragraph to edit the whole paragraph in place, drawn in its
+      font, column width, alignment and leading; `Ctrl+Enter` reflows and saves
+- [x] Multi-select: Shift/Ctrl-click lines or drag a box; move, nudge, resize, recolour, refont or delete together
+- [x] **Snapping**: moved text snaps to other lines' left edges and baselines, with guides (`Alt` moves freely)
+- [x] Character-level highlight, underline and strike-out with a live preview; a click still marks the whole line
+- [x] History tab in the sidebar: every change by name, click to go back or forward
+- [x] Inspector: spans of a mixed-style line, "Change font" for one or many lines, "Edit paragraph"
+- [x] Save mode setting (automatic / always rewrite / always append), "signed" badge in the top bar
+- [x] Font inventory marks fonts Inq Studio embedded from installed fonts
+
+### Known limits of v0.2
+- A reflowed paragraph is written as a new text object at the end of the page: it is drawn last, and clipping
+  that applied at its old place does not carry over
+- Reflow does not hyphenate, and the kerning of edited text comes from glyph widths, not the original `TJ` pairs
+- The paragraph editor previews in the first line's font; the saved result keeps every word's own style
+- Bare CID-keyed CFF programs carry no character map, so they cannot grow; the installed-font fallback is used
+- Installed OpenType-CFF faces get a new subset when an edit needs new glyphs (TrueType faces grow in place)
+- Editing text in a form drawn several times changes every copy (the line says so)
+- The new on-page interactions (paragraph editor, box selection, snapping, character-level markup, history) are
+  type-checked and the build was launched, but they have not been clicked through by hand or by UI tests
 
 ## v0.3 — Forms, objects and pages
 
