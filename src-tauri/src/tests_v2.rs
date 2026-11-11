@@ -406,7 +406,7 @@ fn saves_incrementally() {
     let mut doc = Document::load_mem(&original).unwrap();
     let pid = first_page(&doc);
     edit::edit_line(&mut doc, pid, 0, &LineEdit { text: Some("Changed first line".into()), ..Default::default() }).unwrap();
-    let bytes = crate::store::incremental_for_tests(&(original.clone(), base_doc), &doc).unwrap();
+    let bytes = crate::store::incremental_for_tests(&(std::sync::Arc::new(original.clone()), base_doc), &doc).unwrap();
     assert!(bytes.starts_with(&original), "the original file is kept byte for byte");
     assert!(bytes.len() > original.len());
     let tail = String::from_utf8_lossy(&bytes[original.len()..]);

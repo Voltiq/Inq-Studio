@@ -17,6 +17,37 @@ export interface DocState {
   future: string[];
   /** The document carries digital signatures. */
   signed: boolean;
+  /** Pages the last change can have repainted; null means any of them. */
+  changed: number[] | null;
+  /** The file is written with password protection. */
+  protected: boolean;
+}
+
+export interface Allowed {
+  print: boolean;
+  printHigh: boolean;
+  modify: boolean;
+  copy: boolean;
+  annotate: boolean;
+  fill: boolean;
+  assemble: boolean;
+  accessibility: boolean;
+}
+
+export interface SecurityInfo {
+  protected: boolean;
+  /** New protection that the next save writes. */
+  pending: boolean;
+  method: string;
+  allowed: Allowed;
+  openPassword: boolean | null;
+}
+
+export interface ProtectRequest {
+  openPassword: string;
+  ownerPassword: string;
+  allowed: Allowed;
+  aes256: boolean;
 }
 
 export interface Meta {
@@ -36,6 +67,11 @@ export interface DocInfo {
   wasEncrypted: boolean;
   meta: Meta;
   fileSize: number;
+  security: SecurityInfo;
+  /** "PDF/A-2b" and the like, when the document says it conforms. */
+  pdfa: string | null;
+  /** Full saves write object streams. */
+  compact: boolean;
 }
 
 export type Point = [number, number];
@@ -296,7 +332,207 @@ export interface FontCatalog {
   standard: string[];
 }
 
+export interface OptimizeOptions {
+  imageDpi: number;
+  jpegQuality: number;
+  mergeDuplicates: boolean;
+  discardExtras: boolean;
+  compact: boolean;
+}
+
+export interface OptimizeReport {
+  imagesResampled: number;
+  imagesKept: number;
+  imageBytesBefore: number;
+  imageBytesAfter: number;
+  duplicatesMerged: number;
+  fontsMerged: number;
+  extrasRemoved: number;
+  sizeBefore: number;
+  sizeAfter: number;
+}
+
+export interface PagePair {
+  a: number | null;
+  b: number | null;
+  removed: Quad[];
+  added: Quad[];
+  wordsRemoved: number;
+  wordsAdded: number;
+}
+
+export interface Comparison {
+  pairs: PagePair[];
+  changes: { kind: "added" | "removed" | "replaced"; pair: number; before: string; after: string }[];
+  wordsAdded: number;
+  wordsRemoved: number;
+  pagesAdded: number;
+  pagesRemoved: number;
+  sameText: boolean;
+}
+
+export interface TagNode {
+  id: string;
+  role: string;
+  raw: string;
+  title: string;
+  alt: string;
+  actualText: string;
+  lang: string;
+  page: number | null;
+  text: string;
+  bbox: Rect | null;
+  children: TagNode[];
+}
+
+export interface TagInfo {
+  marked: boolean;
+  hasTree: boolean;
+  lang: string;
+  title: string;
+  displayTitle: boolean;
+  nodes: TagNode[];
+  elements: number;
+  figures: number;
+  figuresWithoutAlt: number;
+  truncated: boolean;
+  issues: string[];
+}
+
+export interface OrderItem {
+  n: number;
+  role: string;
+  bbox: Rect;
+  text: string;
+  id: string;
+}
+
+export interface PdfaIssue {
+  id: string;
+  clause: string;
+  message: string;
+  detail: string;
+  count: number;
+  fixable: boolean;
+}
+
+export interface PdfaReport {
+  target: string;
+  claimed: string | null;
+  issues: PdfaIssue[];
+  checked: number;
+  passed: boolean;
+}
+
+export interface OcrWord {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface OcrLine {
+  words: OcrWord[];
+}
+
+export interface OcrPage {
+  page: number;
+  transform: number[];
+  lines: OcrLine[];
+}
+
+export interface SigInfo {
+  field: string;
+  page: number | null;
+  rect: Rect | null;
+  kind: "signature" | "certification" | "timestamp";
+  subFilter: string;
+  signer: string;
+  subject: string;
+  issuer: string;
+  serial: string;
+  validFrom: string;
+  validTo: string;
+  reason: string;
+  location: string;
+  contact: string;
+  time: string;
+  digest: string;
+  intact: boolean | null;
+  coversWhole: boolean;
+  revision: number;
+  revisions: number;
+  trust: "trusted" | "untrusted" | "expired" | "revoked" | "unknown";
+  trustDetail: string;
+  timestamped: boolean;
+  problem: string;
+}
+
+export interface Signatures {
+  signatures: SigInfo[];
+  emptyFields: string[];
+  unsaved: boolean;
+}
+
+export interface Identity {
+  thumbprint: string;
+  name: string;
+  subject: string;
+  issuer: string;
+  validTo: string;
+  expired: boolean;
+  selfSigned: boolean;
+}
+
+export type IdentityRef = { kind: "store"; thumbprint: string } | { kind: "file"; path: string; password: string };
+
+export interface NewIdentity {
+  name: string;
+  email: string;
+  organisation: string;
+  country: string;
+  years: number;
+  path: string;
+  password: string;
+}
+
+export interface SignOptions {
+  reason: string;
+  location: string;
+  contact: string;
+  page: number;
+  rect: Rect | null;
+  field: string | null;
+}
+
+/** Header values travel percent-encoded. */
+const h = (v: string | number) => encodeURIComponent(String(v));
+
 export const api = {
+  renderInfo: (id: number) => invoke<{ generation: number; length: number }>("doc_render_info", { id }),
+  range: (id: number, generation: number, start: number, end: number) => invoke<ArrayBuffer>("doc_range", { id, generation, start, end }),
+  protect: (id: number, request: ProtectRequest | null) => invoke<DocInfo>("doc_protect", { id, request }),
+  optimize: (id: number, options: OptimizeOptions) => invoke<{ state: DocState; report: OptimizeReport }>("doc_optimize", { id, options }),
+  exportText: (id: number, pages: number[], path: string) => invoke<number>("export_text", { id, pages, path }),
+  writeFile: (path: string, bytes: Uint8Array) => invoke<void>("file_write", bytes, { headers: { "x-path": h(path) } }),
+  compare: (a: number, b: number) => invoke<Comparison>("doc_compare", { a, b }),
+  tags: (id: number) => invoke<TagInfo>("tags_get", { id }),
+  setTagElement: (id: number, element: string, change: { alt?: string; actualText?: string; title?: string }) =>
+    invoke<DocState>("tags_set_element", { id, element, alt: change.alt ?? null, actualText: change.actualText ?? null, title: change.title ?? null }),
+  setTagDocument: (id: number, lang: string | null, displayTitle: boolean | null) => invoke<DocState>("tags_set_document", { id, lang, displayTitle }),
+  readingOrder: (id: number, page: number) => invoke<OrderItem[]>("reading_order", { id, page }),
+  pdfaCheck: (id: number, part: number) => invoke<PdfaReport>("pdfa_check", { id, part }),
+  pdfaConvert: (id: number, part: number) => invoke<{ state: DocState; done: string[]; report: PdfaReport }>("pdfa_convert", { id, part }),
+  ocrSetup: () => invoke<{ languages: { tag: string; name: string }[]; maxDimension: number }>("ocr_setup"),
+  ocrRecognize: (gray: Uint8Array, width: number, height: number, lang: string) =>
+    invoke<{ lines: OcrLine[]; angle: number | null }>("ocr_recognize", gray, { headers: { "x-width": h(width), "x-height": h(height), "x-lang": h(lang) } }),
+  ocrApply: (id: number, pages: OcrPage[], lang: string) => invoke<EditResult>("ocr_apply", { id, pages, lang }),
+  signatures: (id: number) => invoke<Signatures>("sig_list", { id }),
+  identities: () => invoke<Identity[]>("sig_identities"),
+  fileIdentity: (path: string, password: string) => invoke<Identity>("sig_file_identity", { path, password }),
+  createIdentity: (request: NewIdentity) => invoke<Identity>("sig_create_identity", { request }),
+  sign: (id: number, identity: IdentityRef, options: SignOptions, path: string | null) => invoke<DocState>("doc_sign", { id, identity, options, path }),
   open: (path: string, password?: string) => invoke<DocInfo>("doc_open", { path, password: password ?? null }),
   info: (id: number) => invoke<DocInfo>("doc_info", { id }),
   bytes: (id: number) => invoke<ArrayBuffer>("doc_bytes", { id }),

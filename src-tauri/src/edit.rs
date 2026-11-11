@@ -1277,3 +1277,52 @@ pub fn place_text(
     add_page_ops(doc, page_id, ops, behind)?;
     Ok(notices)
 }
+
+/// One recognised word for an invisible text layer: where its baseline
+/// starts, which way it runs, and how wide it must come out.
+pub struct HiddenWord {
+    pub text: String,
+    pub origin: (f32, f32),
+    /// Unit vectors along and up the baseline, in user space.
+    pub dir: (f32, f32),
+    pub up: (f32, f32),
+    pub size: f32,
+    pub width: f32,
+}
+
+/// Lays invisible text over a page (rendering mode 3): it is not drawn, but
+/// it can be searched, selected and copied. Every word is stretched to the
+/// width it was recognised with, so a selection covers the scanned word.
+/// Returns how many words were placed, and notices about fonts.
+pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[HiddenWord], font: &FontChoice) -> Result<(usize, Vec<String>), String> {
+    let target = Target::Choice(font.clone());
+    let mut enc = Encoder::new(page_id);
+    let mut ops = vec![Operation::new("q", vec![]), Operation::new("BT", vec![]), Operation::new("Tr", vec![Object::Integer(3)])];
+    let mut state = (Vec::new(), -1.0f32, Fill::Gray(0.0));
+    let mut placed = 0;
+    for w in words {
+        let chars: Vec<char> = w.text.chars().filter(|c| !c.is_control()).collect();
+        if chars.is_empty() || w.size < 0.5 || w.width <= 0.0 {
+            continue;
+        }
+        // A word no available font can write is left out rather than failing the page.
+        let Ok(items) = encode_styled(&mut enc, doc, Src::Page, &chars, &vec![0; chars.len()], std::slice::from_ref(&target)) else { continue };
+        let natural: f32 = items.iter().map(|it| it.enc.w / 1000.0 * w.size).sum();
+        if natural <= 0.0 {
+            continue;
+        }
+        let stretch = (w.width / natural * 100.0).clamp(5.0, 2000.0);
+        let looks = [Look { size: w.size, fill: Fill::Gray(0.0), tc: 0.0 }];
+        ops.push(Operation::new("Tz", vec![real(stretch)]));
+        ops.push(Operation::new("Tm", vec![real(w.dir.0), real(w.dir.1), real(w.up.0), real(w.up.1), real(w.origin.0), real(w.origin.1)]));
+        shows(&items, &looks, &mut state, false, &mut ops);
+        placed += 1;
+    }
+    ops.push(Operation::new("ET", vec![]));
+    ops.push(Operation::new("Q", vec![]));
+    let notices = enc.finish(doc)?;
+    if placed > 0 {
+        add_page_ops(doc, page_id, ops, false)?;
+    }
+    Ok((placed, notices))
+}

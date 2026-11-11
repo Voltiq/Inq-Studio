@@ -15,7 +15,9 @@ import {
   type Point,
   type Quad,
   type TextLine,
+  type OrderItem,
 } from "../lib/api";
+import { usePageStamps } from "../lib/stamps";
 import { pdfjs, type PDFDocumentProxy, type PageViewport, type SearchHit } from "../lib/pdf";
 import { AnnotsLayer, EXTRA_TOOLS, FieldsLayer, ImagesLayer, ShapesLayer, type ExtraActions, type ToolOptions } from "./PageExtras";
 import type { FieldInfo, ImageInfo, Rect } from "../lib/api";
@@ -67,6 +69,8 @@ const SNAP_PX = 6;
 export function Viewer({
   docId,
   revision,
+  changed,
+  order,
   pdf,
   zoom,
   onScale,
@@ -94,6 +98,10 @@ export function Viewer({
 }: {
   docId: number;
   revision: number;
+  /** Pages the last change can have repainted; null means any. */
+  changed: number[] | null;
+  /** Reading order to draw over one page. */
+  order: { page: number; items: OrderItem[] } | null;
   pdf: PDFDocumentProxy;
   zoom: ZoomMode;
   onScale: (scale: number) => void;
@@ -126,12 +134,26 @@ export function Viewer({
   const [visible, setVisible] = useState<Set<number>>(new Set([0]));
   const anchor = useRef({ page: 0, frac: 0 });
   const [panning, setPanning] = useState(false);
+  const stamps = usePageStamps(revision, changed, pdf.numPages);
 
-  // Page sizes at scale 1, in display orientation.
+  // Page sizes at scale 1, in display orientation. After an edit only the
+  // pages it touched are measured again.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const n = pdf.numPages;
+      if (sizes.length === n && changed) {
+        if (!changed.length) return;
+        const out = [...sizes];
+        for (const i of changed) {
+          if (i >= n) continue;
+          const vp = (await pdf.getPage(i + 1)).getViewport({ scale: 1 });
+          if (cancelled) return;
+          out[i] = { w: vp.width, h: vp.height };
+        }
+        setSizes(out);
+        return;
+      }
       const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
       if (cancelled) return;
       const out: Size[] = sizes.length === n ? [...sizes] : Array.from({ length: n }, () => ({ w: first.width, h: first.height }));
@@ -288,6 +310,8 @@ export function Viewer({
               <PageView
                 docId={docId}
                 revision={revision}
+                stamp={stamps[i] ?? revision}
+                order={order && order.page === i ? order.items : null}
                 pdf={pdf}
                 index={i}
                 scale={scale}
@@ -383,6 +407,8 @@ interface Caret {
 function PageView({
   docId,
   revision,
+  stamp,
+  order,
   pdf,
   index,
   scale,
@@ -405,6 +431,9 @@ function PageView({
 }: {
   docId: number;
   revision: number;
+  /** The revision at which this page's picture last changed. */
+  stamp: number;
+  order: OrderItem[] | null;
   pdf: PDFDocumentProxy;
   index: number;
   scale: number;
@@ -465,7 +494,9 @@ function PageView({
       cancelled = true;
       task?.cancel();
     };
-  }, [pdf, index, scale]);
+    // The newest document is used whenever this page's stamp, place or size changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stamp, index, scale]);
 
   // Selectable text for the select tool.
   useEffect(() => {
@@ -489,7 +520,8 @@ function PageView({
       layer?.cancel();
       div.replaceChildren();
     };
-  }, [pdf, index, scale, tool]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stamp, index, scale, tool]);
 
   // Lines and paragraphs from the content streams, for editing and markup.
   useEffect(() => {
@@ -802,6 +834,19 @@ function PageView({
   return (
     <>
       <canvas ref={canvasRef} className="page-canvas" aria-label={`Page ${index + 1}`} />
+      {vp &&
+        order?.map((o) => {
+          const r = vp.convertToViewportRectangle(o.bbox) as number[];
+          const [x, y] = [Math.min(r[0], r[2]), Math.min(r[1], r[3])];
+          return (
+            <span key={o.n} className="order-box" style={{ left: x, top: y, width: Math.abs(r[2] - r[0]), height: Math.abs(r[3] - r[1]) }} data-tooltip={o.text || undefined}>
+              <span className="order-n">
+                {o.n}
+                {o.role && <em>{o.role}</em>}
+              </span>
+            </span>
+          );
+        })}
       {!rendered && (
         <div className="page-placeholder">
           <Spinner size={20} />

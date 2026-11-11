@@ -118,3 +118,48 @@ export async function search(
   }
   return hits;
 }
+
+/** Documents above this size are read in ranges instead of being copied whole. */
+const RANGE_THRESHOLD = 24 * 1024 * 1024;
+
+/**
+ * Opens a large document without copying it: the reader asks the engine for
+ * the byte ranges it needs. The engine's bytes only grow by appended
+ * updates, so ranges of one generation stay valid while pages render.
+ */
+function loadByRange(read: (begin: number, end: number) => Promise<ArrayBuffer>, length: number): Promise<PDFDocumentProxy> {
+  class Transport extends pdfjs.PDFDataRangeTransport {
+    requestDataRange(begin: number, end: number) {
+      read(begin, end)
+        .then((buf) => this.onDataRange(begin, new Uint8Array(buf)))
+        .catch(() => this.onDataRange(begin, null));
+    }
+  }
+  return pdfjs.getDocument({
+    range: new Transport(length, null),
+    length,
+    rangeChunkSize: 1 << 20,
+    disableAutoFetch: true,
+    disableStream: true,
+    cMapUrl: "/pdfjs/cmaps/",
+    cMapPacked: true,
+    standardFontDataUrl: "/pdfjs/standard_fonts/",
+    wasmUrl: "/pdfjs/wasm/",
+    enableXfa: false,
+  }).promise;
+}
+
+/** Opens the current rendering bytes of an open document. */
+export async function loadDocument(
+  info: () => Promise<{ generation: number; length: number }>,
+  range: (generation: number, begin: number, end: number) => Promise<ArrayBuffer>,
+  whole: () => Promise<ArrayBuffer>,
+): Promise<PDFDocumentProxy> {
+  try {
+    const { generation, length } = await info();
+    if (length >= RANGE_THRESHOLD) return await loadByRange((b, e) => range(generation, b, e), length);
+  } catch {
+    // Fall back to the whole document.
+  }
+  return loadPdf(await whole());
+}

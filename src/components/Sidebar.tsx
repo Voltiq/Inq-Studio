@@ -27,6 +27,7 @@ import { Segmented } from "./ui/Field";
 import type { MenuRequest } from "./ui/Menu";
 import { api, type AnnotInfo, type Bookmark, type FontSummary } from "../lib/api";
 import { type PDFDocumentProxy } from "../lib/pdf";
+import { usePageStamps } from "../lib/stamps";
 import { previewStack } from "../lib/fontPreview";
 import { fontLabel, plural, rgbToHex } from "../lib/format";
 import type { Selection } from "./Viewer";
@@ -59,7 +60,10 @@ export function Sidebar({
   onHistoryGo,
   onSaveOutline,
   labels,
+  changed,
 }: {
+  /** Pages the last change can have repainted; null means any. */
+  changed: number[] | null;
   tab: SideTab;
   onTab: (t: SideTab) => void;
   docId: number;
@@ -83,6 +87,7 @@ export function Sidebar({
   onSaveOutline: (items: Bookmark[]) => Promise<void>;
   labels: string[] | null;
 }) {
+  const stamps = usePageStamps(revision, changed, pdf.numPages);
   return (
     <aside className="panel side" aria-label="Document sidebar">
       <div className="side-head">
@@ -101,6 +106,7 @@ export function Sidebar({
       </div>
       {tab === "pages" && (
         <PagesPanel
+          stamps={stamps}
           labels={labels}
           pdf={pdf}
           page={page}
@@ -171,7 +177,7 @@ function HistoryPanel({ history, future, onGo }: { history: string[]; future: st
 // Pages
 // ---------------------------------------------------------------------------
 
-function Thumb({ pdf, index, width }: { pdf: PDFDocumentProxy; index: number; width: number }) {
+function Thumb({ pdf, index, width, stamp }: { pdf: PDFDocumentProxy; index: number; width: number; stamp: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const holder = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(1.414);
@@ -211,7 +217,8 @@ function Thumb({ pdf, index, width }: { pdf: PDFDocumentProxy; index: number; wi
       cancelled = true;
       task?.cancel();
     };
-  }, [pdf, index, width, shown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stamp, index, width, shown]);
 
   return (
     <div ref={holder} className="thumb-paper" style={{ aspectRatio: `1 / ${ratio}` }}>
@@ -221,6 +228,7 @@ function Thumb({ pdf, index, width }: { pdf: PDFDocumentProxy; index: number; wi
 }
 
 function PagesPanel({
+  stamps,
   labels,
   pdf,
   page,
@@ -240,6 +248,7 @@ function PagesPanel({
   onPageAction: (action: PageAction, pages: number[]) => void;
   onMenu: (m: MenuRequest) => void;
   labels: string[] | null;
+  stamps: number[];
 }) {
   const n = pdf.numPages;
   const [dragging, setDragging] = useState<number[] | null>(null);
@@ -345,7 +354,7 @@ function PagesPanel({
               onClick={(e) => click(i, e)}
               onContextMenu={(e) => menu(i, e)}
             >
-              <Thumb pdf={pdf} index={i} width={n === 1 ? 180 : 112} />
+              <Thumb pdf={pdf} index={i} width={n === 1 ? 180 : 112} stamp={stamps[i] ?? 0} />
               <span className="thumb-label">
                 {labels && labels[i] && labels[i] !== String(i + 1) ? (
                   <>

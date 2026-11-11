@@ -27,7 +27,7 @@ export function parseRange(text: string, pages: number): number[] {
   return [...out].sort((x, y) => x - y);
 }
 
-function ScopePicker({
+export function ScopePicker({
   scope,
   onScope,
   range,
@@ -58,7 +58,7 @@ function ScopePicker({
   );
 }
 
-function useScope(pages: number, current: number, selected: number[]) {
+export function useScope(pages: number, current: number, selected: number[]) {
   const [scope, setScope] = useState<Scope>("all");
   const [range, setRange] = useState("");
   const list = useMemo(() => {

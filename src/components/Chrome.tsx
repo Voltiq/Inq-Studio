@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
+  Archive,
   ChevronDown,
   Circle,
   Crop,
@@ -66,6 +67,11 @@ export interface HudInfo {
   dirty: boolean;
   encrypted: boolean;
   signed: boolean;
+  /** "AES-256" and the like when the file is (or will be) password protected. */
+  protection: string | null;
+  protectionPending: boolean;
+  /** "PDF/A-2b" when the document claims it. */
+  pdfa: string | null;
 }
 
 export function TopBar({
@@ -86,6 +92,9 @@ export function TopBar({
   onSettings,
   onTools,
   canTools,
+  onSignatures,
+  onProtect,
+  onPdfa,
 }: {
   hud: HudInfo | null;
   theme: "light" | "dark";
@@ -104,6 +113,9 @@ export function TopBar({
   onSettings: () => void;
   onTools: (anchor: HTMLElement) => void;
   canTools: boolean;
+  onSignatures: () => void;
+  onProtect: () => void;
+  onPdfa: () => void;
 }) {
   return (
     <header className="topbar" data-tauri-drag-region>
@@ -143,14 +155,25 @@ export function TopBar({
             <span className="hud-sep" aria-hidden="true" />
             <span className="hud-stat">PDF {hud.version}</span>
             {hud.signed && (
-              <Lozenge appearance="success" icon={ShieldCheck} title="Saving appends changes, so existing signatures stay valid">
-                signed
-              </Lozenge>
+              <button type="button" className="hud-chip" onClick={onSignatures} data-tooltip="Check the signatures. Saving appends changes, so they stay valid.">
+                <Lozenge appearance="success" icon={ShieldCheck}>
+                  signed
+                </Lozenge>
+              </button>
             )}
-            {hud.encrypted && (
-              <Lozenge appearance="warning" icon={Lock} title="Saved copies are written without the password">
-                was protected
-              </Lozenge>
+            {hud.protection && (
+              <button type="button" className="hud-chip" onClick={onProtect} data-tooltip={hud.protectionPending ? "Password protection is written on the next save" : "Password protected; saving keeps the protection"}>
+                <Lozenge appearance={hud.protectionPending ? "warning" : "information"} icon={Lock}>
+                  {hud.protection}
+                </Lozenge>
+              </button>
+            )}
+            {hud.pdfa && (
+              <button type="button" className="hud-chip" onClick={onPdfa} data-tooltip="The document says it conforms to this archival standard">
+                <Lozenge appearance="discovery" icon={Archive}>
+                  {hud.pdfa}
+                </Lozenge>
+              </button>
             )}
           </>
         ) : (

@@ -1,8 +1,9 @@
 # Inq Studio
 
 A professional PDF viewer and editor for Windows, built with Tauri 2, Rust and React in the Graphiq design
-language. Edit text in the fonts the document already uses, add text, mark pages up, and rearrange, insert or
-extract pages.
+language. Edit text in the fonts the document already uses, add text, mark pages up, rearrange, insert or
+extract pages, fill in and flatten forms, redact, sign and validate signatures, protect with passwords, make
+scans searchable, compare documents, optimise file size and convert to PDF/A.
 
 ![Inq Studio icon](public/app-icon.svg)
 
@@ -55,7 +56,15 @@ npm run tauri build
 | `src-tauri/src/cmap.rs`, `encoding.rs` | CMaps and single-byte encodings, glyph names |
 | `src-tauri/src/pages.rs`, `annots.rs` | Page organisation, annotations with appearance streams |
 | `src-tauri/src/store.rs` | Open documents, undo/redo, Tauri commands |
+| `src-tauri/src/history.rs` | Undo as differences, appended rendering updates, which pages a change repaints |
+| `src-tauri/src/security.rs` | Password protection: keep, set (AES-256 / AES-128) and remove |
+| `src-tauri/src/sign.rs` | Digital signatures: validate, sign (PAdES), digital IDs — through Windows CryptoAPI |
+| `src-tauri/src/ocr.rs` | OCR with the recogniser built into Windows, invisible text layer |
+| `src-tauri/src/pdfa.rs` | PDF/A checks and conversion, sRGB output intent, XMP metadata |
+| `src-tauri/src/optimize.rs`, `compare.rs`, `tags.rs` | Optimiser, document comparison and text export, structure tree |
+| `src-tauri/src/pro.rs` | Commands of the v0.4 tools |
 | `src/components/Viewer.tsx` | pdf.js rendering, overlays, inline editor |
+| `src/components/ProDialogs.tsx`, `Compare.tsx` | Dialogs of the v0.4 tools, side-by-side comparison |
 | `src/styles/tokens.css` | Graphiq design tokens, shared with the other Studio apps |
 
 See [ROADMAP.md](ROADMAP.md) for what is done and what comes next.

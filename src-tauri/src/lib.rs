@@ -1,6 +1,15 @@
 use tauri::Manager;
 
 mod annots;
+mod compare;
+mod history;
+mod ocr;
+mod optimize;
+mod pdfa;
+mod pro;
+mod security;
+mod sign;
+mod tags;
 mod cmap;
 mod edit;
 mod encoding;
@@ -21,6 +30,8 @@ mod tests;
 mod tests_v2;
 #[cfg(test)]
 mod tests_v3;
+#[cfg(test)]
+mod tests_v4;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -95,6 +106,27 @@ pub fn run() {
             store::pages_crop,
             store::pages_resize,
             store::doc_split,
+            store::doc_render_info,
+            store::doc_range,
+            pro::doc_protect,
+            pro::doc_optimize,
+            pro::export_text,
+            pro::file_write,
+            pro::doc_compare,
+            pro::tags_get,
+            pro::tags_set_element,
+            pro::tags_set_document,
+            pro::reading_order,
+            pro::pdfa_check,
+            pro::pdfa_convert,
+            pro::ocr_setup,
+            pro::ocr_recognize,
+            pro::ocr_apply,
+            pro::sig_list,
+            pro::sig_identities,
+            pro::sig_file_identity,
+            pro::sig_create_identity,
+            pro::doc_sign,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

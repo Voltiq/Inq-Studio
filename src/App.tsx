@@ -7,7 +7,9 @@ import { DocTabs, SHAPE_TOOLS, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, t
 import { PageMarksDialog, ResizeDialog, SplitDialog, type MarksTab } from "./components/ToolDialogs";
 import type { ToolOptions } from "./components/PageExtras";
 import { printDocument } from "./lib/print";
-import { Droplets, Hash, Layers, PanelTop, Printer, Scaling, Scissors, Tags } from "lucide-react";
+import { Accessibility, Archive, Droplets, FileOutput, GitCompareArrows, Hash, Layers, Lock, PanelTop, PenLine, Printer, Scaling, ScanText, Scissors, ShieldCheck, Tags, Zap } from "lucide-react";
+import { AccessibilityDialog, ExportDialog, OcrDialog, OptimizeDialog, PdfaDialog, ProtectDialog, SignaturesDialog, SignDialog } from "./components/ProDialogs";
+import { CompareView } from "./components/Compare";
 import { Welcome } from "./components/Welcome";
 import { Viewer, type Selection, type TextStyle, type ViewerActions } from "./components/Viewer";
 import { Sidebar, type PageAction, type SideTab } from "./components/Sidebar";
@@ -29,8 +31,10 @@ import {
   type Meta,
   type FieldInfo,
   type Rect,
+  type Comparison,
+  type OrderItem,
 } from "./lib/api";
-import { loadPdf, search, type PDFDocumentProxy, type SearchHit } from "./lib/pdf";
+import { loadDocument, search, type PDFDocumentProxy, type SearchHit } from "./lib/pdf";
 import { forgetDocFonts } from "./lib/fontPreview";
 import { forgetRecent, loadRecent, loadSettings, rememberRecent, saveSettings, type RecentFile, type Settings } from "./lib/storage";
 import { applyTheme, watchSystemTheme, type Theme } from "./lib/theme";
@@ -49,6 +53,15 @@ interface DocView {
 }
 
 const PDF_FILTER = [{ name: "PDF documents", extensions: ["pdf"] }];
+
+/** The document as the engine currently has it, ready to render. */
+function openRendering(id: number): Promise<PDFDocumentProxy> {
+  return loadDocument(
+    () => api.renderInfo(id),
+    (generation, begin, end) => api.range(id, generation, begin, end),
+    () => api.bytes(id),
+  );
+}
 
 function initialZoom(s: Settings): ZoomMode {
   return s.defaultZoom === "100" ? 1 : s.defaultZoom;
@@ -89,7 +102,16 @@ export default function App() {
   const [redactFill, setRedactFill] = useState<"black" | "white" | "none">("black");
   const [fields, setFields] = useState<FieldInfo[]>([]);
   const [labels, setLabels] = useState<string[] | null>(null);
-  const [dialog, setDialog] = useState<null | { kind: "marks"; tab: MarksTab } | { kind: "resize" } | { kind: "split" }>(null);
+  const [dialog, setDialog] = useState<
+    | null
+    | { kind: "marks"; tab: MarksTab }
+    | { kind: "resize" | "split" | "protect" | "optimize" | "export" | "ocr" | "pdfa" | "access" | "signatures" }
+    | { kind: "sign"; field: string | null }
+  >(null);
+  const [comparing, setComparing] = useState<{ a: number; b: number; result: Comparison | null } | null>(null);
+  /** The reading order drawn over the current page, when switched on. */
+  const [showOrder, setShowOrder] = useState(false);
+  const [order, setOrder] = useState<{ page: number; items: OrderItem[] } | null>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [hitIndex, setHitIndex] = useState(0);
@@ -149,16 +171,16 @@ export default function App() {
   // ----- opening -----
 
   const openPath = useCallback(
-    async (path: string, pw?: string) => {
+    async (path: string, pw?: string): Promise<number | null> => {
       const existing = docsRef.current.find((d) => d.info.state.path?.toLowerCase() === path.toLowerCase());
       if (existing) {
         setActiveId(existing.info.state.id);
-        return;
+        return existing.info.state.id;
       }
       setBusy(true);
       try {
         const info = await api.open(path, pw);
-        const pdf = await loadPdf(await api.bytes(info.state.id));
+        const pdf = await openRendering(info.state.id);
         const view: DocView = {
           info,
           pdf,
@@ -173,6 +195,7 @@ export default function App() {
         setSelection(null);
         setPassword(null);
         setRecent(rememberRecent({ path, name: info.state.name, pages: info.state.pages }));
+        return info.state.id;
       } catch (e) {
         const msg = errorText(e);
         if (msg === "PASSWORD_REQUIRED") setPassword({ path, wrong: !!pw });
@@ -183,6 +206,7 @@ export default function App() {
       } finally {
         setBusy(false);
       }
+      return null;
     },
     [settings, toast],
   );
@@ -225,7 +249,7 @@ export default function App() {
 
   const refresh = useCallback(
     async (id: number, state: DocState) => {
-      const pdf = await loadPdf(await api.bytes(id));
+      const pdf = await openRendering(id);
       let old: PDFDocumentProxy | null = null;
       updateDoc(id, (d) => {
         old = d.pdf;
@@ -359,6 +383,7 @@ export default function App() {
       try {
         const state = await api.save(docId, path, settingsRef.current.saveMode);
         updateDoc(docId, (x) => ({ ...x, info: { ...x.info, state } }));
+        api.info(docId).then((info) => updateDoc(docId, (x) => ({ ...x, info }))).catch(() => {});
         setRecent(rememberRecent({ path, name: state.name, pages: state.pages }));
         toast("success", "Saved", state.name);
         return true;
@@ -379,6 +404,7 @@ export default function App() {
         const mode = settingsRef.current.saveMode;
         const state = await api.save(docId, undefined, mode);
         updateDoc(docId, (x) => ({ ...x, info: { ...x.info, state } }));
+        api.info(docId).then((info) => updateDoc(docId, (x) => ({ ...x, info }))).catch(() => {});
         const incremental = mode === "incremental" || (mode === "auto" && d.info.state.signed);
         toast("success", "Saved", incremental ? `${state.name}: changes appended, signatures kept` : state.name);
         return true;
@@ -581,6 +607,79 @@ export default function App() {
     if (ok) setRedactions((all) => ({ ...all, [id]: {} }));
   }, [id, redactions, redactFill, run]);
 
+  /** Document facts that are not part of the state every command returns. */
+  const reloadInfo = useCallback(
+    async (docId: number) => {
+      const info = await api.info(docId).catch(() => null);
+      if (info) updateDoc(docId, (d) => ({ ...d, info }));
+    },
+    [updateDoc],
+  );
+
+  const startCompare = useCallback(
+    async (other: number | "file") => {
+      if (id == null) return;
+      let b: number | null = other === "file" ? null : other;
+      if (other === "file") {
+        const picked = await openDialog({ multiple: false, filters: PDF_FILTER }).catch(() => null);
+        if (typeof picked !== "string") return;
+        b = await openPath(picked);
+        // Stay on the document the comparison started from.
+        setActiveId(id);
+      }
+      if (b == null || b === id) return;
+      setComparing({ a: id, b, result: null });
+      try {
+        const result = await api.compare(id, b);
+        setComparing((c) => (c && c.a === id && c.b === b ? { ...c, result } : c));
+      } catch (e) {
+        setComparing(null);
+        toast("error", "Comparing failed", errorText(e));
+      }
+    },
+    [id, openPath, toast],
+  );
+
+  const signDocument = useCallback(
+    async (identity: Parameters<typeof api.sign>[1], options: Parameters<typeof api.sign>[2], saveAsCopy: boolean): Promise<boolean> => {
+      if (id == null) return false;
+      const d = docsRef.current.find((x) => x.info.state.id === id);
+      if (!d) return false;
+      let path: string | null = null;
+      if (saveAsCopy || !d.info.state.path) {
+        const base = (d.info.state.path ?? d.info.state.name).replace(/\.pdf$/i, "");
+        path = await saveDialog({ defaultPath: `${base} (signed).pdf`, filters: PDF_FILTER }).catch(() => null);
+        if (!path) return false;
+      }
+      setSelection(null);
+      const ok = await run(id, () => api.sign(id, identity, options, path), "Signed and saved");
+      if (ok) {
+        await reloadInfo(id);
+        if (path) setRecent(rememberRecent({ path, name: path.split(/[\\/]/).pop() ?? path, pages: d.info.state.pages }));
+      }
+      return ok;
+    },
+    [id, run, reloadInfo],
+  );
+
+  // The reading order of the page in view, while it is switched on.
+  useEffect(() => {
+    if (!showOrder || !active) {
+      setOrder(null);
+      return;
+    }
+    let live = true;
+    const page = active.page;
+    api
+      .readingOrder(active.info.state.id, page)
+      .then((items) => live && setOrder({ page, items }))
+      .catch(() => live && setOrder(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOrder, active?.info.state.id, active?.info.state.revision, active?.page]);
+
   const print = useCallback(async () => {
     if (!active?.pdf) return;
     setBusy(true);
@@ -732,6 +831,7 @@ export default function App() {
       }
       if (isEditableTarget(e.target) || e.altKey) return;
       if (e.key === "Escape") {
+        if (comparing) return;
         if (selection) setSelection(null);
         else if (findOpen) setFindOpen(false);
         else setTool("select");
@@ -811,6 +911,9 @@ export default function App() {
                 dirty: active.info.state.dirty,
                 encrypted: active.info.wasEncrypted,
                 signed: active.info.state.signed,
+                protection: active.info.security.protected ? active.info.security.method : null,
+                protectionPending: active.info.security.pending,
+                pdfa: active.info.pdfa,
               }
             : null
         }
@@ -829,6 +932,9 @@ export default function App() {
         onToggleTheme={() => setSettings({ ...settings, theme: theme === "dark" ? "light" : "dark" })}
         onSettings={() => setShowSettings(true)}
         canTools={!!active?.pdf}
+        onSignatures={() => setDialog({ kind: "signatures" })}
+        onProtect={() => setDialog({ kind: "protect" })}
+        onPdfa={() => setDialog({ kind: "pdfa" })}
         onTools={(anchor) =>
           setMenu({
             anchor,
@@ -846,7 +952,21 @@ export default function App() {
               { label: "Flatten form fields", icon: Layers, disabled: !fields.length, onSelect: () => flatten("forms") },
               { label: "Flatten annotations", icon: Layers, onSelect: () => flatten("annotations") },
               { label: "Flatten everything", icon: Layers, onSelect: () => flatten("all") },
+              { type: "heading", label: "Professional" },
+              { label: "Recognise text (OCR)…", icon: ScanText, onSelect: () => setDialog({ kind: "ocr" }) },
+              { label: "Signatures…", icon: ShieldCheck, onSelect: () => setDialog({ kind: "signatures" }) },
+              { label: "Sign…", icon: PenLine, onSelect: () => setDialog({ kind: "sign", field: null }) },
+              { label: "Protect with a password…", icon: Lock, onSelect: () => setDialog({ kind: "protect" }) },
+              { label: "Optimise…", icon: Zap, onSelect: () => setDialog({ kind: "optimize" }) },
+              { label: "PDF/A…", icon: Archive, onSelect: () => setDialog({ kind: "pdfa" }) },
+              { label: "Accessibility…", icon: Accessibility, onSelect: () => setDialog({ kind: "access" }) },
               { type: "separator" },
+              ...docs
+                .filter((d) => d.info.state.id !== id && d.pdf)
+                .map((d) => ({ label: `Compare with ${d.info.state.name}`, icon: GitCompareArrows, onSelect: () => void startCompare(d.info.state.id) })),
+              { label: "Compare with a file…", icon: GitCompareArrows, onSelect: () => void startCompare("file") },
+              { type: "separator" },
+              { label: "Export pages or text…", icon: FileOutput, onSelect: () => setDialog({ kind: "export" }) },
               { label: "Print…", icon: Printer, shortcut: `${MOD}+P`, onSelect: () => print() },
             ],
           })
@@ -860,6 +980,7 @@ export default function App() {
             onTab={setSideTab}
             docId={active.info.state.id}
             revision={active.info.state.revision}
+            changed={active.info.state.changed}
             pdf={active.pdf}
             page={active.page}
             selected={active.selectedPages}
@@ -952,6 +1073,8 @@ export default function App() {
                 key={active.info.state.id}
                 docId={active.info.state.id}
                 revision={active.info.state.revision}
+                changed={active.info.state.changed}
+                order={order}
                 pdf={active.pdf}
                 zoom={active.zoom}
                 onScale={setScale}
@@ -988,6 +1111,11 @@ export default function App() {
                   </span>
                 )}
                 {active.fonts && <span className="status-item">{plural(active.fonts.length, "font")}</span>}
+                {showOrder && (
+                  <button type="button" className="status-item status-button" onClick={() => setShowOrder(false)} data-tooltip="Hide the reading order">
+                    reading order shown
+                  </button>
+                )}
                 <span className="status-hint">{TOOL_HINTS[tool]}</span>
               </footer>
             </>
@@ -1089,6 +1217,139 @@ export default function App() {
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog?.kind === "protect" && active && (
+        <ProtectDialog
+          info={active.info}
+          onClose={() => setDialog(null)}
+          onApply={async (req) => {
+            try {
+              const info = await api.protect(active.info.state.id, req);
+              updateDoc(active.info.state.id, (d) => ({ ...d, info }));
+              toast("success", req ? "Protection is written on the next save" : "Protection is removed on the next save");
+              return true;
+            } catch (e) {
+              toast("error", "That didn’t work", errorText(e));
+              return false;
+            }
+          }}
+        />
+      )}
+      {dialog?.kind === "optimize" && active && (
+        <OptimizeDialog
+          info={active.info}
+          onClose={() => setDialog(null)}
+          onRun={async (options) => {
+            const docId = active.info.state.id;
+            let report = null;
+            setSelection(null);
+            await run(docId, async () => {
+              const r = await api.optimize(docId, options);
+              report = r.report;
+              return r.state;
+            });
+            await reloadInfo(docId);
+            return report;
+          }}
+        />
+      )}
+      {dialog?.kind === "export" && active?.pdf && (
+        <ExportDialog
+          docId={active.info.state.id}
+          pdf={active.pdf}
+          name={active.info.state.name}
+          pages={active.info.state.pages}
+          current={active.page}
+          selected={active.selectedPages}
+          onDone={toast}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "ocr" && active?.pdf && (
+        <OcrDialog
+          docId={active.info.state.id}
+          pdf={active.pdf}
+          pages={active.info.state.pages}
+          current={active.page}
+          selected={active.selectedPages}
+          onApply={(pages, lang) => run(active.info.state.id, () => api.ocrApply(active.info.state.id, pages, lang))}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "pdfa" && active && (
+        <PdfaDialog
+          docId={active.info.state.id}
+          revision={active.info.state.revision}
+          claimed={active.info.pdfa}
+          onClose={() => setDialog(null)}
+          onConvert={async (part) => {
+            const docId = active.info.state.id;
+            let out = null;
+            setSelection(null);
+            await run(docId, async () => {
+              const r = await api.pdfaConvert(docId, part);
+              out = { done: r.done, report: r.report };
+              return r.state;
+            });
+            await reloadInfo(docId);
+            return out;
+          }}
+        />
+      )}
+      {dialog?.kind === "access" && active && (
+        <AccessibilityDialog
+          docId={active.info.state.id}
+          revision={active.info.state.revision}
+          page={active.page}
+          run={(fn, success) => run(active.info.state.id, fn, success)}
+          orderShown={showOrder}
+          onShowOrder={setShowOrder}
+          onNavigate={goTo}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "signatures" && active && (
+        <SignaturesDialog
+          docId={active.info.state.id}
+          revision={active.info.state.revision}
+          onSign={(field) => setDialog({ kind: "sign", field })}
+          onNavigate={goTo}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "sign" && active && (
+        <SignDialog
+          pages={active.info.state.pages}
+          current={active.page}
+          pageSize={pageSize}
+          field={dialog.field}
+          signed={active.info.state.signed}
+          hasPath={!!active.info.state.path}
+          onSign={signDocument}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {comparing &&
+        (() => {
+          const a = docs.find((d) => d.info.state.id === comparing.a);
+          const b = docs.find((d) => d.info.state.id === comparing.b);
+          if (!a?.pdf || !b?.pdf) return null;
+          return (
+            <CompareView
+              a={{ name: a.info.state.name, pdf: a.pdf }}
+              b={{ name: b.info.state.name, pdf: b.pdf }}
+              result={comparing.result}
+              onSwap={() => {
+                const swapped = { a: comparing.b, b: comparing.a, result: null };
+                setComparing(swapped);
+                api
+                  .compare(swapped.a, swapped.b)
+                  .then((result) => setComparing((c) => (c && c.a === swapped.a && c.b === swapped.b ? { ...c, result } : c)))
+                  .catch(() => setComparing(null));
+              }}
+              onClose={() => setComparing(null)}
+            />
+          );
+        })()}
       {showSettings && <SettingsDialog settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
       {password && (
         <PasswordDialog

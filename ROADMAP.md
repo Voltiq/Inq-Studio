@@ -63,9 +63,8 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - ~~Editing works line by line: longer text does not reflow into the next line yet~~ (fixed in v0.2)
 - ~~A line that switches fonts mid-way reads as separate lines~~ (fixed in v0.2)
 - ~~Text inside Form XObjects is shown but not listed for editing~~ (fixed in v0.2)
-- Saving a password-protected PDF writes it without the password (unless saved incrementally, v0.2)
-- Undo keeps whole-document snapshots, and every edit re-renders from fresh bytes (fine for everyday documents,
-  heavy for very large ones)
+- ~~Saving a password-protected PDF writes it without the password~~ (fixed in v0.4)
+- ~~Undo keeps whole-document snapshots, and every edit re-renders from fresh bytes~~ (fixed in v0.4)
 - UI interactions are type-checked and the app was launched against a generated document; there are no
   automated UI tests yet
 
@@ -117,7 +116,7 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - The new on-page interactions (paragraph editor, box selection, snapping, character-level markup, history) are
   type-checked and the build was launched, but they have not been clicked through by hand or by UI tests
 
-## v0.3 — Forms, objects and pages (this build, 2026-11-11)
+## v0.3 — Forms, objects and pages (2026-11-11)
 
 ### Engine (Rust)
 - [x] **Forms**: the AcroForm field tree read with inherited attributes (text, check box, radio, combo, list,
@@ -163,7 +162,7 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - [x] **Print** through the system dialog (pages rendered at 200 dpi, each at its own paper size)
 
 ### Known limits of v0.3
-- Signature fields are listed but cannot be signed yet (v0.4)
+- ~~Signature fields are listed but cannot be signed yet~~ (done in v0.4)
 - Redaction removes drawings only when they lie entirely under a box; a partly covered drawing stays (the cover
   box hides it on screen, but it remains in the file)
 - Redacting text inside a form used several times removes it from every copy
@@ -172,20 +171,102 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - The new on-page interactions are type-checked, the build was launched against a generated document and two
   layout bugs found there were fixed, but the tools have not been clicked through by hand or by UI tests
 
-## v0.4 — Professional
+## v0.4 — Professional (this build, 2026-11-11)
 
-- [ ] OCR for scans (searchable invisible text layer)
-- [ ] Digital signatures: validate and sign (PAdES)
-- [ ] Encryption: set and remove passwords and permissions
-- [ ] Optimise: image downsampling, font de-duplication, object streams
-- [ ] PDF/A conversion and validation
-- [ ] Compare two documents
-- [ ] Export pages as PNG / JPEG, export text
-- [ ] Large documents: lazy object loading, incremental rendering after edits, lighter undo (diffs, not snapshots)
-- [ ] Accessibility: reading order of tagged PDFs, alt text
+### Engine (Rust)
+- [x] **OCR for scans**: text is recognised by the recogniser built into Windows (`Windows.Media.Ocr`, offline, with
+      the installed language packs) and laid over the page as invisible text, every word stretched to where it
+      was seen; upright on rotated pages; standard font for Latin text, an installed font for other scripts
+- [x] **Signatures, validate**: every signature and document timestamp is checked against the file on disk:
+      the signed byte range is hashed and the CMS signature verified (`adbe.pkcs7.detached`,
+      `ETSI.CAdES.detached`, `adbe.pkcs7.sha1`, `ETSI.RFC3161`), the signer's certificate is shown and its chain
+      checked against the authorities Windows trusts, and content appended after a signature is reported as such
+      (revision n of m)
+- [x] **Signatures, sign (PAdES baseline)**: `ETSI.CAdES.detached`, SHA-256, signing certificate bound into the
+      signed attributes, the certificate chain included; visible signature (name, date, reason, location) or
+      invisible; into an existing empty field or a new one; a second signature is appended so the first stays
+      valid; certificates from the Windows store (smart cards and tokens included) or a `.pfx` file
+- [x] **Digital IDs**: create a self-signed ID (RSA 3072) as a password-protected `.pfx`; nothing is installed
+- [x] **Encryption**: a protected file keeps its protection on save, with both passwords, although only one was
+      typed (the file key and password entries are written back); set new protection with an open password, a
+      permissions password and individual permissions (AES-256 or AES-128); remove it; incremental saves of a
+      protected file encrypt what they append
+- [x] **Optimise**: images above a chosen resolution are resampled (photographs to JPEG, the rest lossless,
+      transparency kept, only when the result is smaller); identical fonts, images and streams are merged;
+      thumbnails and private application data dropped; object streams and a cross-reference stream on save
+- [x] **PDF/A-1b / 2b / 3b check**: some 25 rules that documents fail in practice, each with its ISO 19005 clause:
+      encryption, file identifier, XMP metadata and its claim, fonts not embedded (also in annotation
+      appearances; invisible text exempt), output intent and device colours, scripts and actions, external
+      streams, LZW, JPEG 2000 / transparency / layers (A-1), image hints, PostScript, transfer functions, glyph
+      lists, attachments, XFA, annotation kinds, flags and appearances
+- [x] **PDF/A conversion**: XMP written from the document information (and kept in step on every later save),
+      sRGB output intent (profile generated in code), file identifier, scripts and reader-dependent actions
+      removed, annotation flags set, LZW recompressed, XFA removed, and fonts that are not embedded taken from
+      the fonts installed on this computer
+- [x] **Compare two documents**: pages are paired by their text (inserted and removed pages found), words
+      aligned, and every difference returned with its place on its page
+- [x] **Export text**: paragraphs in the order the pages draw them
+- [x] **Lighter undo**: a history step keeps only the objects a change touched, not a copy of the document;
+      200 steps within a memory budget
+- [x] **Appended rendering**: the bytes the window renders from grow by one small incremental update per change
+      instead of being serialised afresh, and can be read in ranges, so a large document is never copied whole
+- [x] **Changed pages**: every change reports which pages it can have repainted (following references up from
+      the touched objects); the others keep their canvas
+- [x] **Accessibility**: the structure tree read with role mapping, marked content located on its page (text and
+      bounds per MCID), reading order per page, alternative text / actual text / title of an element, document
+      language, "show title instead of file name"; a list of what assistive technology will stumble over
+- [x] 56 tests (14 new): undo as differences, appended updates read back identically (also after a
+      cross-reference stream), changed pages, encryption round trips with both passwords in both strengths,
+      optimising, comparing, text export, the structure tree, the ICC profile, PDF/A check–convert–check, the OCR
+      text layer, the Windows recogniser, and signing with a freshly made digital ID: valid, still valid after an
+      appended edit, two signatures, and a changed byte caught
+
+### App
+- [x] Document tools menu: Recognise text, Signatures, Sign, Protect, Optimise, PDF/A, Accessibility, Compare,
+      Export
+- [x] **Signatures dialog**: one card per signature with a plain verdict, what was checked and what was not
+- [x] **Sign dialog**: digital ID from Windows, from a file, or newly created; reason, location, visible or not,
+      page and corner; sign in place or as a copy
+- [x] **Protect dialog**: passwords, permissions, strength; "remove protection"
+- [x] **Optimise dialog** with the size before and after
+- [x] **PDF/A dialog**: standard, findings with clause and whether converting fixes them, convert
+- [x] **Accessibility dialog**: issues, language, title display, structure tree, alternative text for figures,
+      "next figure without text", reading order drawn over the page
+- [x] **Compare view**: both documents side by side, removed words red, added words green, a list of changes
+      to jump to, optional marking of differences in the picture (images and graphics)
+- [x] **Export dialog**: pages as PNG or JPEG at a chosen resolution, or text
+- [x] **OCR dialog**: language, pages, "skip pages that already have text", progress
+- [x] Only the pages a change touched are rendered again, in the viewer and the thumbnails
+- [x] Documents of 24 MB and more are read by the renderer in ranges
+- [x] Top bar: protection and PDF/A badges; the "signed" badge opens the signatures
+
+### Known limits of v0.4
+- **Lazy object loading is not done**: the PDF library reads every object when a file is opened. Opening a very
+  large file is as slow and as memory-hungry as before; what improved is everything after opening (moved to v1.0)
+- Signatures: no timestamp from a timestamp authority yet (PAdES B-B, not B-T) and no long-term validation
+  data; revocation is not checked online; `adbe.x509.rsa_sha1` signatures cannot be checked; certification
+  signatures are recognised but their permitted-changes rules are not evaluated; a protected document cannot
+  be signed
+- The visible signature is placed in a page corner at a fixed size (no drawing it by hand yet)
+- PDF/A: not a certified validator. Not checked: glyph widths against the font program, ICC profile contents,
+  the XMP schema rules of PDF/A-1, PDF/A level a and u. Not converted: CMYK device colours (no CMYK profile is
+  supplied), transparency for PDF/A-1, fonts that are neither embedded nor installed, composite fonts without a
+  program. Embedding takes the whole font file
+- OCR quality is that of the Windows recogniser; skewed scans are not straightened; the layer is placed word by
+  word on a baseline estimated from the line's box; Windows only
+- Optimise: JPEG 2000, JBIG2 and CCITT images and one-bit scans are left as they are; no font subsetting
+- Compare is by words and, optionally, pixels: moved text shows as removed and added; no comparison of
+  annotations or form values
+- Accessibility: tags can be read and their texts edited, but not created, moved or retyped; content tagged
+  inside reusable forms is not located
+- Encryption: RC4-protected files keep RC4 when saved unchanged; certificate-based encryption is not supported
+- The new dialogs and the compare view are type-checked and the build was launched (see below); they have not
+  been clicked through by hand or by UI tests
 
 ## v1.0 — Release
 
+- [ ] Large documents: lazy object loading (needs a different parser front end)
+- [ ] Signatures: timestamps (PAdES B-T), long-term validation, placing a visible signature by drawing
 - [ ] NSIS installer, code signing, auto-update
 - [ ] Log file and crash reports
 - [ ] German translation

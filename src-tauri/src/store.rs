@@ -12,7 +12,9 @@
 
 use crate::annots::{self, AnnotInfo, NewAnnot};
 use crate::forms;
+use crate::history::{self, Delta, Render};
 use crate::images;
+use crate::security::{self, Protection};
 use crate::edit::{self, LineEdit, NewText};
 use crate::fonts::{FontKind, PdfFont, ProgramKind};
 use crate::interp::{form_fonts, page_resources, resource_fonts, scan_page, Block, TextLine};
@@ -27,21 +29,63 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Response;
 use tauri::State;
 
-const UNDO_LIMIT: usize = 60;
+const UNDO_LIMIT: usize = 200;
+/// Memory the undo history of one document may hold.
+const UNDO_BUDGET: usize = 384 * 1024 * 1024;
+/// Appended rendering updates before the bytes are serialised afresh.
+const RENDER_UPDATES: usize = 400;
 
 pub struct OpenDoc {
     pub path: Option<PathBuf>,
     pub name: String,
     pub doc: Document,
-    /// (document before the change, what the change was)
-    pub undo: Vec<(Document, String)>,
-    /// (document after the change, what the change was)
-    pub redo: Vec<(Document, String)>,
+    /// (what takes the document back before the change, what the change was)
+    pub undo: Vec<(Delta, String)>,
+    /// (what applies the change again, what the change was)
+    pub redo: Vec<(Delta, String)>,
     pub revision: u64,
     pub dirty: bool,
     pub was_encrypted: bool,
     /// The file's bytes and objects as last read or written, for incremental saves.
-    pub base: Option<(Vec<u8>, Document)>,
+    pub base: Option<(Arc<Vec<u8>>, Document)>,
+    /// The document as bytes for the renderer, grown by one small update per change.
+    pub render: Option<Render>,
+    /// The bytes before the last full serialisation, for pages still rendering from them.
+    pub render_old: Option<Render>,
+    /// Pages the last change can have repainted; `None` means any of them.
+    pub changed: Option<Vec<usize>>,
+    /// Password protection written on save.
+    pub protection: Protection,
+    /// The password the file was opened with, to read it back after saving.
+    pub password: Option<String>,
+    /// Write object streams and a cross-reference stream on full saves.
+    pub compact: bool,
+}
+
+impl OpenDoc {
+    /// Brings the rendering bytes and the list of repainted pages up to date
+    /// after the objects `ids` changed.
+    pub fn after_change(&mut self, ids: &[lopdf::ObjectId], pages_before: &[lopdf::ObjectId]) {
+        self.changed = history::changed_pages(&self.doc, ids, pages_before);
+        let stale = match self.render.as_mut() {
+            Some(r) if r.updates < RENDER_UPDATES => r.append(&self.doc, ids).is_err(),
+            Some(_) => true,
+            None => false,
+        };
+        if stale {
+            self.render_old = self.render.take();
+        }
+    }
+
+    fn trim_history(&mut self) {
+        while self.undo.len() > UNDO_LIMIT {
+            self.undo.remove(0);
+        }
+        let mut total: usize = self.undo.iter().map(|(d, _)| d.weight()).sum();
+        while total > UNDO_BUDGET && self.undo.len() > 1 {
+            total -= self.undo.remove(0).0.weight();
+        }
+    }
 }
 
 #[derive(Default, Clone)]
@@ -50,6 +94,7 @@ pub struct Store(Arc<Mutex<StoreInner>>);
 #[derive(Default)]
 pub struct StoreInner {
     next: u32,
+    generation: u64,
     docs: HashMap<u32, OpenDoc>,
 }
 
@@ -69,6 +114,10 @@ pub struct DocState {
     /// Labels of undone changes that can be redone, next first.
     pub future: Vec<String>,
     pub signed: bool,
+    /// Pages (indices) the last change can have repainted; `null` means any.
+    pub changed: Option<Vec<usize>>,
+    /// The file is written with password protection.
+    pub protected: bool,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -92,6 +141,10 @@ pub struct DocInfo {
     pub was_encrypted: bool,
     pub meta: Meta,
     pub file_size: u64,
+    pub security: security::SecurityInfo,
+    /// "PDF/A-2b" and the like, when the document says it conforms.
+    pub pdfa: Option<String>,
+    pub compact: bool,
 }
 
 #[derive(Serialize)]
@@ -140,7 +193,7 @@ pub struct FontSummary {
 }
 
 /// Whether the document carries digital signatures.
-fn is_signed(doc: &Document) -> bool {
+pub(crate) fn is_signed(doc: &Document) -> bool {
     let Ok(cat) = doc.catalog() else { return false };
     let Some(form) = cat.get(b"AcroForm").ok().and_then(|o| dict(doc, o)) else { return false };
     if get_num(doc, form, b"SigFlags").map(|f| f as i64 & 1 != 0).unwrap_or(false) {
@@ -164,7 +217,7 @@ fn is_signed(doc: &Document) -> bool {
     false
 }
 
-fn state(id: u32, d: &OpenDoc) -> DocState {
+pub(crate) fn state(id: u32, d: &OpenDoc) -> DocState {
     DocState {
         id,
         name: d.name.clone(),
@@ -177,10 +230,12 @@ fn state(id: u32, d: &OpenDoc) -> DocState {
         history: d.undo.iter().map(|(_, l)| l.clone()).collect(),
         future: d.redo.iter().rev().map(|(_, l)| l.clone()).collect(),
         signed: is_signed(&d.doc),
+        changed: d.changed.clone(),
+        protected: !matches!(d.protection, Protection::None),
     }
 }
 
-fn read_meta(doc: &Document) -> Meta {
+pub(crate) fn read_meta(doc: &Document) -> Meta {
     let info = doc.trailer.get(b"Info").ok().and_then(|o| dict(doc, o));
     let Some(info) = info else { return Meta::default() };
     let t = |k: &[u8]| get(doc, info, k).and_then(|o| lopdf::decode_text_string(o).ok()).unwrap_or_default();
@@ -196,7 +251,7 @@ fn read_meta(doc: &Document) -> Meta {
     }
 }
 
-fn info_dict_mut(doc: &mut Document) -> &mut lopdf::Dictionary {
+pub(crate) fn info_dict_mut(doc: &mut Document) -> &mut lopdf::Dictionary {
     let id = match doc.trailer.get(b"Info") {
         Ok(Object::Reference(id)) if doc.get_dictionary(*id).is_ok() => *id,
         Ok(Object::Dictionary(d)) => {
@@ -231,11 +286,11 @@ fn write_meta(doc: &mut Document, m: &Meta) {
     }
 }
 
-fn file_name(path: &Path) -> String {
+pub(crate) fn file_name(path: &Path) -> String {
     path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Untitled.pdf".into())
 }
 
-fn short(text: &str) -> String {
+pub(crate) fn short(text: &str) -> String {
     let t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if t.chars().count() > 28 {
         format!("“{}…”", t.chars().take(27).collect::<String>())
@@ -244,7 +299,7 @@ fn short(text: &str) -> String {
     }
 }
 
-fn pages_label(pages: &[usize]) -> String {
+pub(crate) fn pages_label(pages: &[usize]) -> String {
     if pages.len() == 1 {
         format!("page {}", pages[0] + 1)
     } else {
@@ -253,14 +308,25 @@ fn pages_label(pages: &[usize]) -> String {
 }
 
 impl Store {
-    fn with<R>(&self, id: u32, f: impl FnOnce(&mut OpenDoc) -> Result<R, String>) -> Result<R, String> {
+    pub(crate) fn with<R>(&self, id: u32, f: impl FnOnce(&mut OpenDoc) -> Result<R, String>) -> Result<R, String> {
         let mut inner = self.0.lock().map_err(|_| "Internal error: store poisoned")?;
         let d = inner.docs.get_mut(&id).ok_or("That document is no longer open.")?;
         f(d)
     }
 
-    /// Runs a change with a labelled undo snapshot; a failed change leaves the document as it was.
-    fn mutate<R>(
+    /// A number no rendering buffer has had yet.
+    pub(crate) fn next_generation(&self) -> u64 {
+        match self.0.lock() {
+            Ok(mut inner) => {
+                inner.generation += 1;
+                inner.generation
+            }
+            Err(_) => 0,
+        }
+    }
+
+    /// Runs a change with a labelled undo step; a failed change leaves the document as it was.
+    pub(crate) fn mutate<R>(
         &self,
         id: u32,
         label: impl Into<String>,
@@ -269,12 +335,15 @@ impl Store {
         let label = label.into();
         self.with(id, |d| {
             let snapshot = d.doc.clone();
+            let pages_before = pages::page_ids(&d.doc);
             match f(&mut d.doc) {
                 Ok(r) => {
-                    d.undo.push((snapshot, label));
-                    if d.undo.len() > UNDO_LIMIT {
-                        d.undo.remove(0);
-                    }
+                    // Only what the change touched is kept for undo.
+                    let delta = history::diff(&snapshot, &d.doc);
+                    drop(snapshot);
+                    d.after_change(&delta.ids(), &pages_before);
+                    d.undo.push((delta, label));
+                    d.trim_history();
                     d.redo.clear();
                     d.revision += 1;
                     d.dirty = true;
@@ -288,7 +357,7 @@ impl Store {
         })
     }
 
-    fn check_revision(&self, id: u32, revision: u64) -> Result<(), String> {
+    pub(crate) fn check_revision(&self, id: u32, revision: u64) -> Result<(), String> {
         self.with(id, |d| {
             if d.revision != revision {
                 Err("The document changed since this page was read. Try again.".into())
@@ -296,6 +365,14 @@ impl Store {
                 Ok(())
             }
         })
+    }
+
+    pub(crate) fn insert(&self, d: OpenDoc) -> Result<u32, String> {
+        let mut inner = self.0.lock().map_err(|_| "Internal error")?;
+        inner.next += 1;
+        let id = inner.next;
+        inner.docs.insert(id, d);
+        Ok(id)
     }
 }
 
@@ -307,41 +384,49 @@ where
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| format!("Internal error: {e}"))?
 }
 
-fn load_bytes(bytes: &[u8], password: Option<&str>) -> Result<Document, String> {
+pub(crate) fn load_bytes(bytes: &[u8], password: Option<&str>) -> Result<Document, String> {
     let result = match password {
         Some(p) if !p.is_empty() => Document::load_mem_with_options(bytes, lopdf::LoadOptions::with_password(p)),
         _ => Document::load_mem(bytes),
     };
-    result.map_err(|e| {
+    let mut doc = result.map_err(|e| {
         let s = e.to_string();
         if s.to_lowercase().contains("password") || s.to_lowercase().contains("decrypt") {
             "PASSWORD_REQUIRED".to_string()
         } else {
             format!("This file could not be opened as a PDF: {s}")
         }
-    })
+    })?;
+    // Still locked: the empty password opens files that only restrict permissions.
+    if doc.is_encrypted() && doc.decrypt(password.unwrap_or("")).is_err() {
+        return Err("PASSWORD_REQUIRED".to_string());
+    }
+    Ok(doc)
 }
 
-fn load(path: &Path, password: Option<&str>) -> Result<(Vec<u8>, Document), String> {
+pub(crate) fn load(path: &Path, password: Option<&str>) -> Result<(Vec<u8>, Document), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("The file could not be read: {e}"))?;
     let doc = load_bytes(&bytes, password)?;
     Ok((bytes, doc))
 }
 
-fn info_of(id: u32, d: &OpenDoc) -> DocInfo {
+pub(crate) fn info_of(id: u32, d: &OpenDoc) -> DocInfo {
     DocInfo {
         state: state(id, d),
         version: d.doc.version.clone(),
         was_encrypted: d.was_encrypted,
         meta: read_meta(&d.doc),
         file_size: d.path.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len()).unwrap_or(0),
+        security: security::info(&d.protection),
+        pdfa: crate::pdfa::claimed(&d.doc),
+        compact: d.compact,
     }
 }
 
 /// The current document written as an incremental update of `base`.
-fn incremental_bytes(base: &(Vec<u8>, Document), doc: &Document) -> Result<Vec<u8>, String> {
+pub(crate) fn incremental_bytes(base: &(Arc<Vec<u8>>, Document), doc: &Document) -> Result<Vec<u8>, String> {
     let (bytes, prev) = base;
-    let mut inc = IncrementalDocument::create_from(bytes.clone(), prev.clone());
+    let mut inc = IncrementalDocument::create_from(bytes.as_ref().clone(), prev.clone());
     for (id, obj) in &doc.objects {
         if prev.objects.get(id) != Some(obj) {
             inc.new_document.set_object(*id, obj.clone());
@@ -363,31 +448,41 @@ fn incremental_bytes(base: &(Vec<u8>, Document), doc: &Document) -> Result<Vec<u
 // Documents
 // ---------------------------------------------------------------------------
 
+/// A freshly read document, ready for the store.
+pub(crate) fn opened(path: PathBuf, bytes: Vec<u8>, doc: Document, password: Option<String>) -> OpenDoc {
+    let was_encrypted = doc.encryption_state.is_some() || doc.trailer.has(b"Encrypt");
+    let protection = match &doc.encryption_state {
+        Some(state) => Protection::Keep(state.clone()),
+        None => Protection::None,
+    };
+    let base = Some((Arc::new(bytes), doc.clone()));
+    OpenDoc {
+        name: file_name(&path),
+        path: Some(path),
+        doc,
+        undo: Vec::new(),
+        redo: Vec::new(),
+        revision: 1,
+        dirty: false,
+        was_encrypted,
+        base,
+        render: None,
+        render_old: None,
+        changed: None,
+        protection,
+        password,
+        compact: false,
+    }
+}
+
 #[tauri::command]
 pub async fn doc_open(store: State<'_, Store>, path: String, password: Option<String>) -> Result<DocInfo, String> {
     let store = store.inner().clone();
     off_thread(move || {
         let p = PathBuf::from(&path);
         let (bytes, doc) = load(&p, password.as_deref())?;
-        let was_encrypted = doc.encryption_state.is_some() || doc.trailer.has(b"Encrypt");
-        let mut inner = store.0.lock().map_err(|_| "Internal error")?;
-        inner.next += 1;
-        let id = inner.next;
-        let base = Some((bytes, doc.clone()));
-        let d = OpenDoc {
-            name: file_name(&p),
-            path: Some(p),
-            doc,
-            undo: Vec::new(),
-            redo: Vec::new(),
-            revision: 1,
-            dirty: false,
-            was_encrypted,
-            base,
-        };
-        let info = info_of(id, &d);
-        inner.docs.insert(id, d);
-        Ok(info)
+        let id = store.insert(opened(p, bytes, doc, password.filter(|p| !p.is_empty())))?;
+        store.with(id, |d| Ok(info_of(id, d)))
     })
     .await
 }
@@ -398,19 +493,69 @@ pub async fn doc_info(store: State<'_, Store>, id: u32) -> Result<DocInfo, Strin
     off_thread(move || store.with(id, |d| Ok(info_of(id, d)))).await
 }
 
+/// The rendering bytes, serialised in full when there are none yet.
+fn render_of(store: &Store, d: &mut OpenDoc, generation: u64) -> Result<(), String> {
+    let _ = store;
+    if d.render.is_none() {
+        d.render = Some(Render::full(&mut d.doc, generation)?);
+    }
+    Ok(())
+}
+
 /// The current document as PDF bytes, for rendering.
 #[tauri::command]
 pub async fn doc_bytes(store: State<'_, Store>, id: u32) -> Result<Response, String> {
     let store = store.inner().clone();
     let bytes = off_thread(move || {
+        let generation = store.next_generation();
         store.with(id, |d| {
-            let mut buf = Vec::new();
-            d.doc.save_to(&mut buf).map_err(err)?;
-            Ok(buf)
+            render_of(&store, d, generation)?;
+            Ok(d.render.as_ref().map(|r| r.bytes.clone()).unwrap_or_default())
         })
     })
     .await?;
     Ok(Response::new(bytes))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderInfo {
+    pub generation: u64,
+    pub length: usize,
+}
+
+/// Which rendering bytes are current and how long they are, so a large
+/// document can be read in ranges instead of being copied whole.
+#[tauri::command]
+pub async fn doc_render_info(store: State<'_, Store>, id: u32) -> Result<RenderInfo, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let generation = store.next_generation();
+        store.with(id, |d| {
+            render_of(&store, d, generation)?;
+            let r = d.render.as_ref().ok_or("No rendering bytes")?;
+            Ok(RenderInfo { generation: r.generation, length: r.bytes.len() })
+        })
+    })
+    .await
+}
+
+/// A slice of the rendering bytes of one generation. Updates only append, so
+/// a range read for an older revision of the same generation is still right.
+#[tauri::command]
+pub fn doc_range(store: State<'_, Store>, id: u32, generation: u64, start: usize, end: usize) -> Result<Response, String> {
+    store
+        .with(id, |d| {
+            let r = [d.render.as_ref(), d.render_old.as_ref()]
+                .into_iter()
+                .flatten()
+                .find(|r| r.generation == generation)
+                .ok_or("Those rendering bytes are gone.")?;
+            let end = end.min(r.bytes.len());
+            let start = start.min(end);
+            Ok(r.bytes[start..end].to_vec())
+        })
+        .map(Response::new)
 }
 
 #[tauri::command]
@@ -420,49 +565,121 @@ pub fn doc_close(store: State<'_, Store>, id: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Writes bytes next to the target first, so a failed save never destroys the original.
+pub(crate) fn write_safely(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    let tmp = target.with_extension("inq-saving");
+    std::fs::write(&tmp, bytes).map_err(|e| format!("Saving failed: {e}"))?;
+    std::fs::rename(&tmp, target).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("Saving failed: {e}. Is the file open in another program?")
+    })
+}
+
+/// The bytes of a full rewrite of `out`, with the protection asked for.
+/// Returns the bytes and the password that opens them again.
+pub(crate) fn full_bytes(
+    out: &mut Document,
+    protection: &Protection,
+    password: &Option<String>,
+    compact: bool,
+) -> Result<(Vec<u8>, Option<String>), String> {
+    out.prune_objects();
+    out.compress();
+    crate::pdfa::keep_metadata_plain(out);
+    let mut buf = Vec::new();
+    let failed = |e: std::io::Error| format!("Saving failed: {e}");
+    match protection {
+        Protection::None => {
+            out.encryption_state = None;
+            if compact {
+                let options = lopdf::SaveOptions { use_object_streams: true, use_xref_streams: true, ..Default::default() };
+                out.save_with_options(&mut buf, options).map_err(failed)?;
+            } else {
+                out.save_to(&mut buf).map_err(failed)?;
+            }
+            Ok((buf, None))
+        }
+        Protection::Keep(state) => {
+            let mut enc = out.clone();
+            enc.encrypt(state).map_err(|e| format!("The document could not be encrypted again: {e}"))?;
+            enc.save_to(&mut buf).map_err(failed)?;
+            Ok((buf, password.clone()))
+        }
+        Protection::New(req) => {
+            security::prepare(out, req);
+            let state = security::build(req, out)?;
+            let mut enc = out.clone();
+            enc.encrypt(&state).map_err(|e| format!("The document could not be encrypted: {e}"))?;
+            enc.save_to(&mut buf).map_err(failed)?;
+            Ok((buf, Some(req.reopen_password().to_string())))
+        }
+    }
+}
+
+/// Records what was just written to `target` as the document's new state.
+pub(crate) fn saved(d: &mut OpenDoc, mut out: Document, bytes: Vec<u8>, password: Option<String>, target: PathBuf, generation: u64) {
+    let protected = !matches!(d.protection, Protection::None);
+    let bytes = Arc::new(bytes);
+    // What was written becomes the base for the next incremental save.
+    let reread = load_bytes(&bytes, password.as_deref()).ok();
+    out.encryption_state = reread.as_ref().and_then(|r| r.encryption_state.clone());
+    if let Some(state) = &out.encryption_state {
+        d.protection = Protection::Keep(state.clone());
+    } else if !protected || reread.is_some() {
+        d.protection = Protection::None;
+    }
+    d.password = password;
+    d.was_encrypted = protected;
+    // An unprotected file is exactly what the renderer needs; a protected one
+    // is serialised in the clear when it is next asked for.
+    let render = if protected { None } else { Render::from_bytes(bytes.as_ref().clone(), generation).ok() };
+    if let Some(old) = std::mem::replace(&mut d.render, render) {
+        d.render_old = Some(old);
+    }
+    d.base = reread.map(|r| (bytes, r));
+    d.doc = out;
+    d.name = file_name(&target);
+    d.path = Some(target);
+    d.dirty = false;
+    d.revision += 1;
+    d.changed = Some(Vec::new());
+}
+
 /// Saves. `mode` is "full" (rewritten and optimised), "incremental" (changes
 /// appended to the original file) or "auto" (incremental for signed documents).
 #[tauri::command]
 pub async fn doc_save(store: State<'_, Store>, id: u32, path: Option<String>, mode: Option<String>) -> Result<DocState, String> {
     let store = store.inner().clone();
     off_thread(move || {
+        let generation = store.next_generation();
         store.with(id, |d| {
             let target = path.map(PathBuf::from).or_else(|| d.path.clone()).ok_or("Choose where to save.")?;
             let mode = mode.unwrap_or_else(|| "auto".into());
+            // Changing or removing protection rewrites every string and stream.
+            let protection_changes = match &d.protection {
+                Protection::New(_) => true,
+                Protection::None => d.doc.encryption_state.is_some(),
+                Protection::Keep(_) => false,
+            };
             let incremental = match mode.as_str() {
                 "incremental" => true,
                 "full" => false,
                 _ => is_signed(&d.doc),
-            } && d.base.is_some();
+            } && d.base.is_some()
+                && !protection_changes;
             let mut out = d.doc.clone();
             info_dict_mut(&mut out).set("ModDate", lopdf::text_string(&annots::pdf_date()));
-            let bytes = if incremental {
-                incremental_bytes(d.base.as_ref().unwrap(), &out)?
-            } else {
-                out.prune_objects();
-                out.compress();
-                let mut buf = Vec::new();
-                out.save_to(&mut buf).map_err(|e| format!("Saving failed: {e}"))?;
-                buf
-            };
-            // Write next to the target first, so a failed save never destroys the original.
-            let tmp = target.with_extension("inq-saving");
-            std::fs::write(&tmp, &bytes).map_err(|e| format!("Saving failed: {e}"))?;
-            std::fs::rename(&tmp, &target).map_err(|e| {
-                let _ = std::fs::remove_file(&tmp);
-                format!("Saving failed: {e}. Is the file open in another program?")
-            })?;
-            // What was written becomes the base for the next incremental save.
-            if let Ok(reread) = load_bytes(&bytes, None) {
-                d.base = Some((bytes, reread));
-            } else {
-                d.base = None;
+            if crate::pdfa::claimed(&out).is_some() {
+                crate::pdfa::sync_metadata(&mut out);
             }
-            d.doc = out;
-            d.name = file_name(&target);
-            d.path = Some(target);
-            d.dirty = false;
-            d.revision += 1;
+            let (bytes, password) = if incremental {
+                (incremental_bytes(d.base.as_ref().unwrap(), &out)?, d.password.clone())
+            } else {
+                let compact = d.compact && crate::pdfa::allows_object_streams(&out);
+                full_bytes(&mut out, &d.protection, &d.password, compact)?
+            };
+            write_safely(&target, &bytes)?;
+            saved(d, out, bytes, password, target, generation);
             Ok(state(id, d))
         })
     })
@@ -495,17 +712,16 @@ async fn doc_goto_steps(store: State<'_, Store>, id: u32, steps: i32) -> Result<
             if steps > 0 && d.redo.is_empty() {
                 return Err("Nothing to redo.".into());
             }
+            let pages_before = pages::page_ids(&d.doc);
+            let mut touched: Vec<lopdf::ObjectId> = Vec::new();
             for _ in 0..steps.unsigned_abs() {
-                if steps < 0 {
-                    let Some((prev, label)) = d.undo.pop() else { break };
-                    let cur = std::mem::replace(&mut d.doc, prev);
-                    d.redo.push((cur, label));
-                } else {
-                    let Some((next, label)) = d.redo.pop() else { break };
-                    let cur = std::mem::replace(&mut d.doc, next);
-                    d.undo.push((cur, label));
-                }
+                let (from, to) = if steps < 0 { (&mut d.undo, &mut d.redo) } else { (&mut d.redo, &mut d.undo) };
+                let Some((delta, label)) = from.pop() else { break };
+                touched.extend(delta.ids());
+                let inverse = history::apply(&mut d.doc, delta);
+                to.push((inverse, label));
             }
+            d.after_change(&touched, &pages_before);
             d.revision += 1;
             d.dirty = true;
             Ok(state(id, d))
@@ -881,7 +1097,7 @@ pub fn startup_files() -> Vec<String> {
 }
 
 #[cfg(test)]
-pub(crate) fn incremental_for_tests(base: &(Vec<u8>, Document), doc: &Document) -> Result<Vec<u8>, String> {
+pub(crate) fn incremental_for_tests(base: &(Arc<Vec<u8>>, Document), doc: &Document) -> Result<Vec<u8>, String> {
     incremental_bytes(base, doc)
 }
 
