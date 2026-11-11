@@ -145,6 +145,8 @@ export default function App() {
 
   useEffect(() => {
     let live = true;
+    // The page and everything React draws switch in the same frame; the title bar follows.
+    if (settings.theme !== "system") setTheme(settings.theme);
     applyTheme(settings.theme).then((t) => {
       if (!live) return;
       setTheme(t);

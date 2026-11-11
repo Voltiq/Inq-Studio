@@ -120,51 +120,82 @@
   color: var(--icon);
 }
 
-/* ----- Select ----- */
+/* ----- Select: a trigger and a floating list ----- */
 
-.select {
-  position: relative;
+.select-trigger {
   display: flex;
   align-items: center;
-}
-
-.select select {
+  gap: var(--space-100);
   width: 100%;
   height: 2.25rem;
-  padding: 0 var(--space-400) 0 0.6875rem;
+  padding: 0 0.625rem 0 0.6875rem;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface-2);
   color: var(--text);
+  font: inherit;
   font-weight: var(--font-weight-medium);
+  text-align: left;
   box-shadow: var(--inset-lo);
-  appearance: none;
   cursor: pointer;
   transition:
     border-color var(--duration-medium) var(--ease),
     box-shadow var(--duration-medium) var(--ease);
 }
 
-.select select:hover {
+.select-trigger:hover {
   border-color: var(--line-2);
 }
 
-.select select:focus-visible {
+.select-trigger:focus-visible,
+.select-trigger.is-open {
   outline: none;
   border-color: var(--accent-line);
   box-shadow: var(--focus-ring);
 }
 
-.select select option {
-  background: var(--surface-2);
-  color: var(--text);
+.select-trigger:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .select-chevron {
-  position: absolute;
-  right: 0.625rem;
+  flex: none;
   color: var(--icon-subtlest);
-  pointer-events: none;
+  transition: transform var(--duration-short) var(--ease);
+}
+
+.select-trigger.is-open .select-chevron {
+  transform: rotate(180deg);
+  color: var(--icon);
+}
+
+.select-list {
+  max-width: min(32rem, calc(100vw - 16px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform-origin: top center;
+}
+
+.select-list.is-up {
+  transform-origin: bottom center;
+}
+
+.select-option.is-chosen {
+  color: var(--text-selected);
+  font-weight: var(--font-weight-medium);
+}
+
+.select-option.is-chosen .menu-item-icon {
+  color: var(--icon-selected);
 }
 
 /* ----- Toggle: switches stretch before they snap ----- */

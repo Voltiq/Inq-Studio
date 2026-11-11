@@ -361,3 +361,11 @@
   --tag-blue: #2563eb;
   --tag-purple: #7c5cf0;
 }
+
+/* While the theme changes nothing animates, so every element changes in the same frame. */
+:root.theme-switching,
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition: none !important;
+}

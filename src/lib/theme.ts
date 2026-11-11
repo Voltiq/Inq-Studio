@@ -20,9 +20,24 @@ export function resolveTheme(preference: ThemePreference): Theme {
   return preference === "system" ? systemTheme() : preference;
 }
 
-/** Switches the page's colours right away, without waiting for the window. */
+let settle = 0;
+
+/**
+ * Switches the page's colours right away, without waiting for the window.
+ * Transitions are held off while the colours change: otherwise every element
+ * fades to the new theme at its own speed and the switch arrives in pieces.
+ */
 export function setPageTheme(theme: Theme) {
-  document.documentElement.dataset.theme = theme;
+  const root = document.documentElement;
+  if (root.dataset.theme === theme) return;
+  root.classList.add("theme-switching");
+  root.dataset.theme = theme;
+  // Apply the new colours now, then let transitions run again two frames later.
+  void root.offsetHeight;
+  cancelAnimationFrame(settle);
+  settle = requestAnimationFrame(() => {
+    settle = requestAnimationFrame(() => root.classList.remove("theme-switching"));
+  });
 }
 
 /**

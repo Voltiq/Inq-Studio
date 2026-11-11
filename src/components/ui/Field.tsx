@@ -4,7 +4,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
-import { Check, ChevronDown, CircleAlert, Minus, X, type LucideIcon } from "lucide-react";
+import { Check, CircleAlert, Minus, X, type LucideIcon } from "lucide-react";
 import { cx } from "../../lib/utils";
 
 interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
@@ -203,39 +203,7 @@ export function Segmented<T extends string>({
   );
 }
 
-export function Select<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  helper,
-}: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-  helper?: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <div className="field">
-      <label className="field-label" htmlFor={id}>
-        {label}
-      </label>
-      <div className="select">
-        <select id={id} value={value} onChange={(e) => onChange(e.target.value as T)}>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown size={16} className="select-chevron" aria-hidden="true" />
-      </div>
-      {helper && <p className="field-message">{helper}</p>}
-    </div>
-  );
-}
+export { Select } from "./Select";
 
 export function RadioList<T extends string>({
   value,
