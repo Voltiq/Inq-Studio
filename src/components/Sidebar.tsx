@@ -14,13 +14,19 @@ import {
   FileInput,
   History,
   CircleDot,
+  ArrowDown,
+  ArrowUp,
+  BookmarkPlus,
+  Crosshair,
+  IndentDecrease,
+  IndentIncrease,
 } from "lucide-react";
 import { IconButton } from "./ui/Button";
 import { EmptyState, Lozenge, Spinner } from "./ui/Feedback";
 import { Segmented } from "./ui/Field";
 import type { MenuRequest } from "./ui/Menu";
-import { api, type AnnotInfo, type FontSummary } from "../lib/api";
-import { destPage, outline, type OutlineItem, type PDFDocumentProxy } from "../lib/pdf";
+import { api, type AnnotInfo, type Bookmark, type FontSummary } from "../lib/api";
+import { type PDFDocumentProxy } from "../lib/pdf";
 import { previewStack } from "../lib/fontPreview";
 import { fontLabel, plural, rgbToHex } from "../lib/format";
 import type { Selection } from "./Viewer";
@@ -51,6 +57,8 @@ export function Sidebar({
   history,
   future,
   onHistoryGo,
+  onSaveOutline,
+  labels,
 }: {
   tab: SideTab;
   onTab: (t: SideTab) => void;
@@ -72,6 +80,8 @@ export function Sidebar({
   history: string[];
   future: string[];
   onHistoryGo: (steps: number) => void;
+  onSaveOutline: (items: Bookmark[]) => Promise<void>;
+  labels: string[] | null;
 }) {
   return (
     <aside className="panel side" aria-label="Document sidebar">
@@ -91,6 +101,7 @@ export function Sidebar({
       </div>
       {tab === "pages" && (
         <PagesPanel
+          labels={labels}
           pdf={pdf}
           page={page}
           selected={selected}
@@ -101,7 +112,7 @@ export function Sidebar({
           onMenu={onMenu}
         />
       )}
-      {tab === "outline" && <OutlinePanel pdf={pdf} onNavigate={onNavigate} />}
+      {tab === "outline" && <BookmarksPanel docId={docId} revision={revision} page={page} onNavigate={onNavigate} onSave={onSaveOutline} />}
       {tab === "fonts" && <FontsPanel docId={docId} fonts={fonts} activeKey={activeFontKey} onNavigate={onNavigate} />}
       {tab === "comments" && (
         <CommentsPanel
@@ -210,6 +221,7 @@ function Thumb({ pdf, index, width }: { pdf: PDFDocumentProxy; index: number; wi
 }
 
 function PagesPanel({
+  labels,
   pdf,
   page,
   selected,
@@ -227,6 +239,7 @@ function PagesPanel({
   onReorder: (order: number[]) => void;
   onPageAction: (action: PageAction, pages: number[]) => void;
   onMenu: (m: MenuRequest) => void;
+  labels: string[] | null;
 }) {
   const n = pdf.numPages;
   const [dragging, setDragging] = useState<number[] | null>(null);
@@ -333,7 +346,15 @@ function PagesPanel({
               onContextMenu={(e) => menu(i, e)}
             >
               <Thumb pdf={pdf} index={i} width={n === 1 ? 180 : 112} />
-              <span className="thumb-label">{i + 1}</span>
+              <span className="thumb-label">
+                {labels && labels[i] && labels[i] !== String(i + 1) ? (
+                  <>
+                    {labels[i]} <span className="is-muted">({i + 1})</span>
+                  </>
+                ) : (
+                  i + 1
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -346,38 +367,111 @@ function PagesPanel({
 // Outline
 // ---------------------------------------------------------------------------
 
-function OutlineNode({ item, pdf, onNavigate, depth }: { item: OutlineItem; pdf: PDFDocumentProxy; onNavigate: (p: number) => void; depth: number }) {
-  const [open, setOpen] = useState(depth < 1);
-  const has = item.items.length > 0;
+type Path = number[];
+
+function at(items: Bookmark[], path: Path): Bookmark | null {
+  let list = items;
+  let node: Bookmark | null = null;
+  for (const i of path) {
+    node = list[i] ?? null;
+    if (!node) return null;
+    list = node.children;
+  }
+  return node;
+}
+
+function clone(items: Bookmark[]): Bookmark[] {
+  return JSON.parse(JSON.stringify(items));
+}
+
+/** The sibling list holding `path`, and its index there. */
+function parentOf(items: Bookmark[], path: Path): [Bookmark[], number] {
+  let list = items;
+  for (const i of path.slice(0, -1)) list = list[i].children;
+  return [list, path[path.length - 1]];
+}
+
+function BookmarkRow({
+  item,
+  path,
+  selected,
+  editing,
+  onSelect,
+  onNavigate,
+  onRename,
+  onToggle,
+}: {
+  item: Bookmark;
+  path: Path;
+  selected: Path | null;
+  editing: Path | null;
+  onSelect: (p: Path) => void;
+  onNavigate: (page: number) => void;
+  onRename: (p: Path, title: string | null) => void;
+  onToggle: (p: Path) => void;
+}) {
+  const same = (a: Path | null) => !!a && a.length === path.length && a.every((v, i) => v === path[i]);
+  const [draft, setDraft] = useState(item.title);
+  useEffect(() => setDraft(item.title), [item.title]);
+  const has = item.children.length > 0;
   return (
     <div>
-      <button
-        type="button"
-        className="outline-item"
-        onClick={async () => {
-          const p = await destPage(pdf, item.dest);
-          if (p != null) onNavigate(p);
+      <div
+        className={cx("outline-item", "bookmark-row", same(selected) && "is-selected")}
+        role="treeitem"
+        aria-selected={same(selected)}
+        tabIndex={0}
+        onClick={() => {
+          onSelect(path);
+          if (item.page != null) onNavigate(item.page);
         }}
-        style={{ fontWeight: item.bold ? 600 : undefined, fontStyle: item.italic ? "italic" : undefined }}
+        onDoubleClick={() => onRename(path, item.title)}
       >
         <span
           role={has ? "button" : undefined}
-          aria-label={has ? (open ? "Collapse" : "Expand") : undefined}
+          aria-label={has ? (item.open ? "Collapse" : "Expand") : undefined}
           onClick={(e) => {
             if (!has) return;
             e.stopPropagation();
-            setOpen(!open);
+            onToggle(path);
           }}
           style={{ visibility: has ? "visible" : "hidden", display: "flex" }}
         >
-          <ChevronRight size={14} className={cx("chev", open && "is-open")} />
+          <ChevronRight size={14} className={cx("chev", item.open && "is-open")} />
         </span>
-        <span>{item.title}</span>
-      </button>
-      {has && open && (
-        <div className="outline-children">
-          {item.items.map((c, i) => (
-            <OutlineNode key={i} item={c} pdf={pdf} onNavigate={onNavigate} depth={depth + 1} />
+        {same(editing) ? (
+          <input
+            className="bookmark-input"
+            autoFocus
+            value={draft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") onRename(path, draft.trim() ? draft : null);
+              if (e.key === "Escape") onRename(path, null);
+            }}
+            onBlur={() => onRename(path, draft.trim() && draft !== item.title ? draft : null)}
+          />
+        ) : (
+          <span className="bookmark-title">{item.title || "Untitled"}</span>
+        )}
+        {item.page != null && <span className="bookmark-page">{item.page + 1}</span>}
+      </div>
+      {has && item.open && (
+        <div className="outline-children" role="group">
+          {item.children.map((c, i) => (
+            <BookmarkRow
+              key={i}
+              item={c}
+              path={[...path, i]}
+              selected={selected}
+              editing={editing}
+              onSelect={onSelect}
+              onNavigate={onNavigate}
+              onRename={onRename}
+              onToggle={onToggle}
+            />
           ))}
         </div>
       )}
@@ -385,29 +479,162 @@ function OutlineNode({ item, pdf, onNavigate, depth }: { item: OutlineItem; pdf:
   );
 }
 
-function OutlinePanel({ pdf, onNavigate }: { pdf: PDFDocumentProxy; onNavigate: (p: number) => void }) {
-  const [items, setItems] = useState<OutlineItem[] | null>(null);
+function BookmarksPanel({
+  docId,
+  revision,
+  page,
+  onNavigate,
+  onSave,
+}: {
+  docId: number;
+  revision: number;
+  page: number;
+  onNavigate: (p: number) => void;
+  onSave: (items: Bookmark[]) => Promise<void>;
+}) {
+  const [items, setItems] = useState<Bookmark[] | null>(null);
+  const [selected, setSelected] = useState<Path | null>(null);
+  const [editing, setEditing] = useState<Path | null>(null);
   useEffect(() => {
     let live = true;
-    outline(pdf)
+    api
+      .outline(docId)
       .then((o) => live && setItems(o))
       .catch(() => live && setItems([]));
     return () => {
       live = false;
     };
-  }, [pdf]);
+  }, [docId, revision]);
+
+  const commit = (next: Bookmark[], sel: Path | null = selected) => {
+    setItems(next);
+    setSelected(sel);
+    onSave(next);
+  };
+
+  const add = () => {
+    const next = clone(items ?? []);
+    const bm: Bookmark = { title: `Page ${page + 1}`, page, open: false, children: [] };
+    let path: Path;
+    if (selected && at(next, selected)) {
+      const [list, i] = parentOf(next, selected);
+      list.splice(i + 1, 0, bm);
+      path = [...selected.slice(0, -1), i + 1];
+    } else {
+      next.push(bm);
+      path = [next.length - 1];
+    }
+    setItems(next);
+    setSelected(path);
+    setEditing(path);
+  };
+
+  const remove = () => {
+    if (!selected || !items) return;
+    const next = clone(items);
+    const [list, i] = parentOf(next, selected);
+    list.splice(i, 1);
+    commit(next, null);
+  };
+
+  const move = (dir: -1 | 1) => {
+    if (!selected || !items) return;
+    const next = clone(items);
+    const [list, i] = parentOf(next, selected);
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    commit(next, [...selected.slice(0, -1), j]);
+  };
+
+  const indent = () => {
+    if (!selected || !items) return;
+    const next = clone(items);
+    const [list, i] = parentOf(next, selected);
+    if (i === 0) return;
+    const [node] = list.splice(i, 1);
+    const prev = list[i - 1];
+    prev.children.push(node);
+    prev.open = true;
+    commit(next, [...selected.slice(0, -1), i - 1, prev.children.length - 1]);
+  };
+
+  const outdent = () => {
+    if (!selected || selected.length < 2 || !items) return;
+    const next = clone(items);
+    const [list, i] = parentOf(next, selected);
+    const [node] = list.splice(i, 1);
+    const parentPath = selected.slice(0, -1);
+    const [plist, pi] = parentOf(next, parentPath);
+    plist.splice(pi + 1, 0, node);
+    commit(next, [...parentPath.slice(0, -1), pi + 1]);
+  };
+
+  const setTarget = () => {
+    if (!selected || !items) return;
+    const next = clone(items);
+    const node = at(next, selected);
+    if (!node) return;
+    node.page = page;
+    node.top = null;
+    commit(next);
+  };
+
+  const sel = selected && items ? at(items, selected) : null;
   return (
-    <div className="side-body">
-      {items == null ? (
-        <Spinner />
-      ) : items.length === 0 ? (
-        <EmptyState icon={BookOpen} title="No outline" compact>
-          This document has no bookmarks.
-        </EmptyState>
-      ) : (
-        items.map((it, i) => <OutlineNode key={i} item={it} pdf={pdf} onNavigate={onNavigate} depth={0} />)
-      )}
-    </div>
+    <>
+      <div className="side-head" style={{ paddingTop: 0 }}>
+        <span className="eyebrow" style={{ flex: 1 }}>
+          Bookmarks
+        </span>
+        <IconButton icon={BookmarkPlus} label={`Add bookmark to page ${page + 1}`} spacing="compact" onClick={add} />
+        <IconButton icon={ArrowUp} label="Move up" spacing="compact" disabled={!sel} onClick={() => move(-1)} />
+        <IconButton icon={ArrowDown} label="Move down" spacing="compact" disabled={!sel} onClick={() => move(1)} />
+        <IconButton icon={IndentIncrease} label="Make it part of the bookmark above" spacing="compact" disabled={!sel} onClick={indent} />
+        <IconButton icon={IndentDecrease} label="Move it out one level" spacing="compact" disabled={!sel || (selected?.length ?? 0) < 2} onClick={outdent} />
+        <IconButton icon={Crosshair} label={`Point it at page ${page + 1}`} spacing="compact" disabled={!sel} onClick={setTarget} />
+        <IconButton icon={Trash2} label="Delete bookmark" spacing="compact" disabled={!sel} onClick={remove} />
+      </div>
+      <div className="side-body" role="tree" aria-label="Bookmarks">
+        {items == null ? (
+          <Spinner />
+        ) : items.length === 0 ? (
+          <EmptyState icon={BookOpen} title="No bookmarks" compact>
+            Add one for the current page; double-click a bookmark to rename it.
+          </EmptyState>
+        ) : (
+          items.map((it, i) => (
+            <BookmarkRow
+              key={i}
+              item={it}
+              path={[i]}
+              selected={selected}
+              editing={editing}
+              onSelect={setSelected}
+              onNavigate={onNavigate}
+              onToggle={(p) => {
+                const next = clone(items);
+                const n = at(next, p);
+                if (n) n.open = !n.open;
+                setItems(next);
+              }}
+              onRename={(p, title) => {
+                setEditing(null);
+                if (title == null) {
+                  // A new bookmark keeps its default name; just save it.
+                  onSave(items);
+                  return;
+                }
+                const next = clone(items);
+                const n = at(next, p);
+                if (n) n.title = title;
+                commit(next, p);
+              }}
+            />
+          ))
+        )}
+      </div>
+    </>
   );
 }
 

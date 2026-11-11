@@ -222,7 +222,7 @@ const TIMES: [u16; 95] = [
 
 /// Approximate advance of a character in a standard font, for PDFs that
 /// leave out `/Widths` (allowed for the standard 14 only).
-fn std14_width(f: Std14, c: char) -> f32 {
+pub fn std14_width(f: Std14, c: char) -> f32 {
     let table = match f {
         Std14::Courier => return 600.0,
         Std14::Helvetica => &HELVETICA,

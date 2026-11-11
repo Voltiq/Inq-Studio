@@ -11,6 +11,8 @@
 //! appended. That keeps digital signatures valid.
 
 use crate::annots::{self, AnnotInfo, NewAnnot};
+use crate::forms;
+use crate::images;
 use crate::edit::{self, LineEdit, NewText};
 use crate::fonts::{FontKind, PdfFont, ProgramKind};
 use crate::interp::{form_fonts, page_resources, resource_fonts, scan_page, Block, TextLine};
@@ -830,6 +832,13 @@ pub async fn annot_add(store: State<'_, Store>, id: u32, page: usize, annot: New
             "note" => "Add note",
             "ink" => "Draw",
             "rect" => "Add rectangle",
+            "ellipse" => "Add ellipse",
+            "line" => "Add line",
+            "arrow" => "Add arrow",
+            "polygon" => "Add polygon",
+            "textbox" => "Add text box",
+            "stamp" => "Add stamp",
+            "link" => "Add link",
             _ => "Add annotation",
         };
         store
@@ -874,4 +883,283 @@ pub fn startup_files() -> Vec<String> {
 #[cfg(test)]
 pub(crate) fn incremental_for_tests(base: &(Vec<u8>, Document), doc: &Document) -> Result<Vec<u8>, String> {
     incremental_bytes(base, doc)
+}
+
+// ---------------------------------------------------------------------------
+// v0.3: annotations, forms, images, redaction, page marks, labels, bookmarks, page tools
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn annot_update(
+    store: State<'_, Store>,
+    id: u32,
+    page: usize,
+    index: usize,
+    change: annots::AnnotChange,
+) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let label = if change.dx != 0.0 || change.dy != 0.0 { "Move annotation" } else { "Edit annotation" };
+        store
+            .mutate(id, label, |doc| {
+                let pid = pages::page_id(doc, page)?;
+                annots::update(doc, pid, index, &change)
+            })
+            .map(|(s, _)| s)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn form_fields(store: State<'_, Store>, id: u32) -> Result<Vec<forms::FieldInfo>, String> {
+    let store = store.inner().clone();
+    off_thread(move || store.with(id, |d| Ok(forms::fields(&d.doc)))).await
+}
+
+#[tauri::command]
+pub async fn form_set(store: State<'_, Store>, id: u32, name: String, value: String) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let label = format!("Fill in {}", short(&name));
+        store.mutate(id, label, |doc| forms::set_field(doc, &name, &value)).map(|(s, _)| s)
+    })
+    .await
+}
+
+/// Flattens "forms", "annotations" or "all".
+#[tauri::command]
+pub async fn doc_flatten(store: State<'_, Store>, id: u32, scope: String) -> Result<EditResult, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let (w, o) = match scope.as_str() {
+            "forms" => (true, false),
+            "annotations" => (false, true),
+            _ => (true, true),
+        };
+        let (state, n) = store.mutate(id, "Flatten", |doc| forms::flatten_document(doc, w, o))?;
+        Ok(EditResult { state, notice: Some(format!("Flattened {n} item{}.", if n == 1 { "" } else { "s" })) })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn images_list(store: State<'_, Store>, id: u32, page: usize) -> Result<Vec<images::ImageInfo>, String> {
+    let store = store.inner().clone();
+    off_thread(move || store.with(id, |d| images::list(&d.doc, pages::page_id(&d.doc, page)?))).await
+}
+
+#[tauri::command]
+pub async fn image_insert(store: State<'_, Store>, id: u32, page: usize, path: String, at: Option<[f32; 2]>) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        store
+            .mutate(id, "Insert image", |doc| {
+                let pid = pages::page_id(doc, page)?;
+                images::insert(doc, pid, Path::new(&path), at)
+            })
+            .map(|(s, _)| s)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn image_place(store: State<'_, Store>, id: u32, page: usize, index: usize, bbox: [f32; 4]) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        store
+            .mutate(id, "Move image", |doc| {
+                let pid = pages::page_id(doc, page)?;
+                images::place(doc, pid, index, bbox)
+            })
+            .map(|(s, _)| s)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn image_delete(store: State<'_, Store>, id: u32, page: usize, index: usize) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        store
+            .mutate(id, "Delete image", |doc| {
+                let pid = pages::page_id(doc, page)?;
+                images::delete(doc, pid, index)
+            })
+            .map(|(s, _)| s)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn image_replace(store: State<'_, Store>, id: u32, page: usize, index: usize, path: String) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        store
+            .mutate(id, "Replace image", |doc| {
+                let pid = pages::page_id(doc, page)?;
+                images::replace(doc, pid, index, Path::new(&path))
+            })
+            .map(|(s, _)| s)
+    })
+    .await
+}
+
+/// Saves an image to `path`, correcting the extension to the format written. Returns the final path.
+#[tauri::command]
+pub async fn image_extract(store: State<'_, Store>, id: u32, page: usize, index: usize, path: String) -> Result<String, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let (bytes, ext) = store.with(id, |d| images::extract(&d.doc, pages::page_id(&d.doc, page)?, index))?;
+        let target = PathBuf::from(&path).with_extension(ext);
+        std::fs::write(&target, bytes).map_err(|e| format!("Saving the image failed: {e}"))?;
+        Ok(target.to_string_lossy().to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn text_find(store: State<'_, Store>, id: u32, query: String) -> Result<Vec<crate::redact::Found>, String> {
+    let store = store.inner().clone();
+    off_thread(move || store.with(id, |d| crate::redact::find(&d.doc, &query))).await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedactMarks {
+    pub page: usize,
+    pub rects: Vec<[f32; 4]>,
+}
+
+#[tauri::command]
+pub async fn redact(store: State<'_, Store>, id: u32, marks: Vec<RedactMarks>, fill: Option<[f32; 3]>) -> Result<EditResult, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let n: usize = marks.iter().map(|m| m.rects.len()).sum();
+        let label = format!("Redact {n} area{}", if n == 1 { "" } else { "s" });
+        let (state, total) = store.mutate(id, label, |doc| {
+            let mut total = crate::redact::Redacted::default();
+            for m in &marks {
+                let pid = pages::page_id(doc, m.page)?;
+                total.add(&crate::redact::redact(doc, pid, &m.rects, fill)?);
+            }
+            Ok(total)
+        })?;
+        let mut parts = Vec::new();
+        if total.glyphs > 0 {
+            parts.push(format!("{} characters", total.glyphs));
+        }
+        if total.images_removed > 0 {
+            parts.push(format!("{} images", total.images_removed));
+        }
+        if total.images_changed > 0 {
+            parts.push(format!("parts of {} images", total.images_changed));
+        }
+        if total.paths > 0 {
+            parts.push(format!("{} drawings", total.paths));
+        }
+        if total.annotations > 0 {
+            parts.push(format!("{} annotations", total.annotations));
+        }
+        let notice = if parts.is_empty() {
+            "Nothing was found under the marked areas; they were covered.".to_string()
+        } else {
+            format!("Removed {} from the file. Save to make it permanent.", parts.join(", "))
+        };
+        Ok(EditResult { state, notice: Some(notice) })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn page_marks(store: State<'_, Store>, id: u32, pages: Vec<usize>, mark: crate::marks::Mark) -> Result<EditResult, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let label = match &mark {
+            crate::marks::Mark::Watermark { .. } => "Add watermark",
+            crate::marks::Mark::HeaderFooter { .. } => "Add header and footer",
+            crate::marks::Mark::Bates { .. } => "Add Bates numbers",
+        };
+        let file = store.with(id, |d| Ok(d.name.trim_end_matches(".pdf").to_string()))?;
+        let (state, notices) = store.mutate(id, label, |doc| crate::marks::apply(doc, &pages, &mark, &file))?;
+        Ok(EditResult { state, notice: (!notices.is_empty()).then(|| notices.join(" ")) })
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Labels {
+    pub ranges: Vec<crate::marks::LabelRange>,
+    pub strings: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn labels_get(store: State<'_, Store>, id: u32) -> Result<Labels, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        store.with(id, |d| {
+            let ranges = crate::marks::labels(&d.doc);
+            let strings = crate::marks::label_strings(&ranges, d.doc.get_pages().len());
+            Ok(Labels { ranges, strings })
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn labels_set(store: State<'_, Store>, id: u32, ranges: Vec<crate::marks::LabelRange>) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || store.mutate(id, "Page labels", |doc| crate::marks::set_labels(doc, &ranges)).map(|(s, _)| s)).await
+}
+
+#[tauri::command]
+pub async fn outline_get(store: State<'_, Store>, id: u32) -> Result<Vec<crate::outline::Bookmark>, String> {
+    let store = store.inner().clone();
+    off_thread(move || store.with(id, |d| Ok(crate::outline::get_outline(&d.doc)))).await
+}
+
+#[tauri::command]
+pub async fn outline_set(store: State<'_, Store>, id: u32, items: Vec<crate::outline::Bookmark>) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || store.mutate(id, "Edit bookmarks", |doc| crate::outline::set_outline(doc, &items)).map(|(s, _)| s)).await
+}
+
+#[tauri::command]
+pub async fn pages_crop(store: State<'_, Store>, id: u32, pages: Vec<usize>, area: Option<[f32; 4]>) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let label = if area.is_some() { format!("Crop {}", pages_label(&pages)) } else { format!("Uncrop {}", pages_label(&pages)) };
+        store.mutate(id, label, |doc| pages::crop(doc, &pages, area)).map(|(s, _)| s)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn pages_resize(store: State<'_, Store>, id: u32, pages: Vec<usize>, width: f32, height: f32) -> Result<DocState, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let label = format!("Resize {}", pages_label(&pages));
+        store.mutate(id, label, |doc| pages::resize(doc, &pages, width, height)).map(|(s, _)| s)
+    })
+    .await
+}
+
+/// Writes one file per range into `folder`; returns the paths written.
+#[tauri::command]
+pub async fn doc_split(store: State<'_, Store>, id: u32, ranges: Vec<Vec<usize>>, folder: String) -> Result<Vec<String>, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        let (docs, base) = store.with(id, |d| Ok((pages::split(&d.doc, &ranges)?, d.name.trim_end_matches(".pdf").to_string())))?;
+        let mut written = Vec::new();
+        for (i, (mut part, range)) in docs.into_iter().zip(ranges.iter().filter(|r| !r.is_empty())).enumerate() {
+            let (a, b) = (range.iter().min().unwrap() + 1, range.iter().max().unwrap() + 1);
+            let name = if a == b { format!("{base} ({:02}) p{a}.pdf", i + 1) } else { format!("{base} ({:02}) p{a}-{b}.pdf", i + 1) };
+            let path = Path::new(&folder).join(name);
+            part.compress();
+            part.save(&path).map_err(|e| format!("Saving {} failed: {e}", path.display()))?;
+            written.push(path.to_string_lossy().to_string());
+        }
+        Ok(written)
+    })
+    .await
 }

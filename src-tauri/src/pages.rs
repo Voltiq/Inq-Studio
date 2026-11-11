@@ -166,3 +166,102 @@ pub fn extract(doc: &Document, indices: &[usize]) -> Result<Document, String> {
     copy.prune_objects();
     Ok(copy)
 }
+
+/// Crops pages to a rectangle in user space, or removes the crop with `None`.
+pub fn crop(doc: &mut Document, indices: &[usize], area: Option<[f32; 4]>) -> Result<(), String> {
+    let ids = page_ids(doc);
+    for i in indices {
+        let id = *ids.get(*i).ok_or("No such page")?;
+        let media = inherited(doc, id, b"MediaBox").and_then(|o| rect(doc, o)).unwrap_or([0.0, 0.0, 595.0, 842.0]);
+        let page = doc.get_dictionary_mut(id).map_err(err)?;
+        match area {
+            Some(r) => {
+                let c = [r[0].max(media[0]), r[1].max(media[1]), r[2].min(media[2]), r[3].min(media[3])];
+                if c[2] - c[0] < 9.0 || c[3] - c[1] < 9.0 {
+                    return Err("The crop area is too small.".into());
+                }
+                page.set("CropBox", c.iter().map(|v| real(*v)).collect::<Vec<_>>());
+            }
+            None => page.set("CropBox", media.iter().map(|v| real(*v)).collect::<Vec<_>>()),
+        }
+    }
+    Ok(())
+}
+
+fn scale_points(o: &Object, s: f32, tx: f32, ty: f32) -> Object {
+    match o {
+        Object::Array(a) => Object::Array(
+            a.iter()
+                .enumerate()
+                .map(|(i, x)| match x {
+                    Object::Array(_) => scale_points(x, s, tx, ty),
+                    _ => num(x).map(|v| real(v * s + if i % 2 == 0 { tx } else { ty })).unwrap_or_else(|| x.clone()),
+                })
+                .collect(),
+        ),
+        o => o.clone(),
+    }
+}
+
+/// Changes the page size (as shown), scaling the content to fit and centring it.
+pub fn resize(doc: &mut Document, indices: &[usize], width: f32, height: f32) -> Result<(), String> {
+    if width < 36.0 || height < 36.0 || width > 14400.0 || height > 14400.0 {
+        return Err("Pages must be between 0.5 and 200 inches on each side.".into());
+    }
+    let ids = page_ids(doc);
+    for i in indices {
+        let id = *ids.get(*i).ok_or("No such page")?;
+        let b = inherited(doc, id, b"CropBox")
+            .or_else(|| inherited(doc, id, b"MediaBox"))
+            .and_then(|o| rect(doc, o))
+            .unwrap_or([0.0, 0.0, 595.0, 842.0]);
+        let rot = crate::edit::page_rotation(doc, id);
+        let (tw, th) = if rot % 180 == 0 { (width, height) } else { (height, width) };
+        let (bw, bh) = (b[2] - b[0], b[3] - b[1]);
+        let s = (tw / bw).min(th / bh);
+        let (tx, ty) = ((tw - bw * s) / 2.0 - b[0] * s, (th - bh * s) / 2.0 - b[1] * s);
+        let mut ops = vec![
+            lopdf::content::Operation::new("q", vec![]),
+            lopdf::content::Operation::new("cm", vec![real(s), 0.into(), 0.into(), real(s), real(tx), real(ty)]),
+        ];
+        ops.extend(crate::interp::page_content_ops(doc, id)?);
+        ops.push(lopdf::content::Operation::new("Q", vec![]));
+        crate::edit::set_ops(doc, id, crate::interp::Src::Page, ops)?;
+        // Annotations move with the content.
+        let mut annots = crate::annots::annots_array(doc, id);
+        for a in annots.iter_mut() {
+            let (aid, mut d) = match a {
+                Object::Reference(r) => match doc.get_dictionary(*r) {
+                    Ok(d) => (Some(*r), d.clone()),
+                    Err(_) => continue,
+                },
+                Object::Dictionary(d) => (None, d.clone()),
+                _ => continue,
+            };
+            for key in [&b"Rect"[..], b"QuadPoints", b"InkList", b"L", b"Vertices"] {
+                if let Ok(v) = d.get(key) {
+                    let v = scale_points(&deref(doc, v).clone(), s, tx, ty);
+                    d.set(key.to_vec(), v);
+                }
+            }
+            match aid {
+                Some(r) => {
+                    doc.objects.insert(r, Object::Dictionary(d));
+                }
+                None => *a = Object::Dictionary(d),
+            }
+        }
+        crate::annots::set_annots(doc, id, annots)?;
+        let page = doc.get_dictionary_mut(id).map_err(err)?;
+        page.set("MediaBox", vec![0.into(), 0.into(), real(tw), real(th)]);
+        for k in [&b"CropBox"[..], b"BleedBox", b"TrimBox", b"ArtBox"] {
+            page.remove(k);
+        }
+    }
+    Ok(())
+}
+
+/// Splits into several documents, one per range of page indices.
+pub fn split(doc: &Document, ranges: &[Vec<usize>]) -> Result<Vec<Document>, String> {
+    ranges.iter().filter(|r| !r.is_empty()).map(|r| extract(doc, r)).collect()
+}

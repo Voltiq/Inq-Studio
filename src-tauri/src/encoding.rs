@@ -243,6 +243,12 @@ pub fn glyph_to_unicode(name: &str) -> Option<String> {
     None
 }
 
+/// The WinAnsi byte for a character, for text set in the standard fonts.
+pub fn win_ansi_byte(c: char) -> Option<u8> {
+    let c = if c == '\u{A0}' || c == '\t' { ' ' } else { c };
+    (0u16..256).find(|b| win_ansi(*b as u8) == Some(c)).map(|b| b as u8)
+}
+
 /// The glyph name for a character, for writing `/Differences`.
 pub fn unicode_to_glyph(c: char) -> String {
     if c.is_ascii_alphabetic() {

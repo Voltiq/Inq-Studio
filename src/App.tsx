@@ -3,7 +3,11 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
-import { DocTabs, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, type Toast } from "./components/Chrome";
+import { DocTabs, SHAPE_TOOLS, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, type Toast } from "./components/Chrome";
+import { PageMarksDialog, ResizeDialog, SplitDialog, type MarksTab } from "./components/ToolDialogs";
+import type { ToolOptions } from "./components/PageExtras";
+import { printDocument } from "./lib/print";
+import { Droplets, Hash, Layers, PanelTop, Printer, Scaling, Scissors, Tags } from "lucide-react";
 import { Welcome } from "./components/Welcome";
 import { Viewer, type Selection, type TextStyle, type ViewerActions } from "./components/Viewer";
 import { Sidebar, type PageAction, type SideTab } from "./components/Sidebar";
@@ -23,14 +27,16 @@ import {
   type FontSummary,
   type LineEdit,
   type Meta,
+  type FieldInfo,
+  type Rect,
 } from "./lib/api";
 import { loadPdf, search, type PDFDocumentProxy, type SearchHit } from "./lib/pdf";
 import { forgetDocFonts } from "./lib/fontPreview";
 import { forgetRecent, loadRecent, loadSettings, rememberRecent, saveSettings, type RecentFile, type Settings } from "./lib/storage";
 import { applyTheme, watchSystemTheme, type Theme } from "./lib/theme";
 import { length, paperName, plural } from "./lib/format";
-import type { Tool, ZoomMode } from "./lib/types";
-import { isEditableTarget } from "./lib/utils";
+import type { ShapeTool, Tool, ZoomMode } from "./lib/types";
+import { isEditableTarget, MOD } from "./lib/utils";
 
 interface DocView {
   info: DocInfo;
@@ -76,6 +82,14 @@ export default function App() {
   });
   const textStyleTouched = useRef(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [shape, setShape] = useState<ShapeTool>("rect");
+  const [toolOptions, setToolOptions] = useState<ToolOptions>({ stampLabel: "Approved", fill: null, textSize: 12 });
+  /** Redaction marks waiting to be applied: document → page → rectangles. */
+  const [redactions, setRedactions] = useState<Record<number, Record<number, Rect[]>>>({});
+  const [redactFill, setRedactFill] = useState<"black" | "white" | "none">("black");
+  const [fields, setFields] = useState<FieldInfo[]>([]);
+  const [labels, setLabels] = useState<string[] | null>(null);
+  const [dialog, setDialog] = useState<null | { kind: "marks"; tab: MarksTab } | { kind: "resize" } | { kind: "split" }>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [hitIndex, setHitIndex] = useState(0);
@@ -293,6 +307,35 @@ export default function App() {
     };
   }, [active?.pdf, active?.page]);
 
+  // Form fields and page labels of the active document, refreshed after every change.
+  useEffect(() => {
+    if (!active) {
+      setFields([]);
+      setLabels(null);
+      return;
+    }
+    const docId = active.info.state.id;
+    let live = true;
+    api
+      .fields(docId)
+      .then((f) => live && setFields(f))
+      .catch(() => live && setFields([]));
+    api
+      .labels(docId)
+      .then((l) => live && setLabels(l.strings))
+      .catch(() => live && setLabels(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.info.state.id, active?.info.state.revision]);
+
+  const chooseTool = useCallback((t: Tool) => {
+    setTool(t);
+    setSelection(null);
+    if (SHAPE_TOOLS.some((s) => s.tool === t)) setShape(t as ShapeTool);
+  }, []);
+
   // ----- document commands -----
 
   const id = active?.info.state.id ?? null;
@@ -415,6 +458,36 @@ export default function App() {
       },
       addText: async (page, spec) => (id == null ? false : run(id, () => api.addText(id, page, spec))),
       addAnnot: async (page, annot) => (id == null ? false : run(id, () => api.addAnnot(id, page, annot))),
+      updateAnnot: async (page, index, change) => {
+        if (id == null) return false;
+        const ok = await run(id, () => api.updateAnnot(id, page, index, change));
+        if (ok) {
+          const list = await api.annots(id, page).catch(() => []);
+          const a = list.find((x) => x.index === index);
+          setSelection((s) => (s?.kind === "annot" && s.page === page && s.annot.index === index ? (a ? { kind: "annot", page, annot: a } : null) : s));
+        }
+        return ok;
+      },
+      setField: async (name, value) => (id == null ? false : run(id, () => api.setField(id, name, value))),
+      placeImage: async (page, index, bbox) => {
+        if (id == null) return false;
+        const ok = await run(id, () => api.placeImage(id, page, index, bbox));
+        if (ok) setSelection(null);
+        return ok;
+      },
+      insertImage: async (page, at) => {
+        if (id == null) return false;
+        const path = await openDialog({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }] }).catch(() => null);
+        if (typeof path !== "string") return false;
+        return run(id, () => api.insertImage(id, page, path, at));
+      },
+      crop: async (page, area, scope) => {
+        if (id == null) return false;
+        const d = docsRef.current.find((x) => x.info.state.id === id);
+        const all = Array.from({ length: d?.info.state.pages ?? 0 }, (_, i) => i);
+        const pages = scope === "page" ? [page] : scope === "all" ? all : d?.selectedPages.length ? d.selectedPages : [page];
+        return run(id, () => api.crop(id, pages, area), `Cropped ${pages.length === 1 ? "the page" : `${pages.length} pages`}`);
+      },
     }),
     [id, run],
   );
@@ -430,6 +503,103 @@ export default function App() {
       );
     },
     [selection, actions],
+  );
+
+  const deleteImage = useCallback(() => {
+    if (id == null || selection?.kind !== "image") return;
+    const { page, image } = selection;
+    setSelection(null);
+    run(id, () => api.deleteImage(id, page, image.index), "Image deleted");
+  }, [id, selection, run]);
+
+  const replaceImage = useCallback(async () => {
+    if (id == null || selection?.kind !== "image") return;
+    const { page, image } = selection;
+    const path = await openDialog({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }] }).catch(() => null);
+    if (typeof path !== "string") return;
+    setSelection(null);
+    run(id, () => api.replaceImage(id, page, image.index, path), "Image replaced");
+  }, [id, selection, run]);
+
+  const extractImage = useCallback(async () => {
+    if (id == null || selection?.kind !== "image" || !active) return;
+    const { page, image } = selection;
+    const base = active.info.state.name.replace(/\.pdf$/i, "");
+    const ext = image.filter === "DCTDecode" && !image.hasAlpha ? "jpg" : "png";
+    const path = await saveDialog({ defaultPath: `${base} p${page + 1} image ${image.index + 1}.${ext}` }).catch(() => null);
+    if (!path) return;
+    try {
+      const written = await api.extractImage(id, page, image.index, path);
+      toast("success", "Image saved", written);
+    } catch (e) {
+      toast("error", "Saving the image failed", errorText(e));
+    }
+  }, [id, selection, active, toast]);
+
+  const docRedactions = id != null ? (redactions[id] ?? {}) : {};
+  const redactCount = Object.values(docRedactions).reduce((n, r) => n + r.length, 0);
+
+  const markForRedaction = useCallback(
+    async (query: string) => {
+      if (id == null) return;
+      try {
+        const found = await api.find(id, query);
+        if (!found.length) {
+          toast("info", "Not found", `“${query}” does not appear in the text of this document.`);
+          return;
+        }
+        setRedactions((all) => {
+          const cur = { ...(all[id] ?? {}) };
+          let n = 0;
+          for (const f of found) {
+            const rects = f.quads.map((q) => {
+              const xs = q.map((p) => p[0]);
+              const ys = q.map((p) => p[1]);
+              return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as Rect;
+            });
+            n += rects.length;
+            cur[f.page] = [...(cur[f.page] ?? []), ...rects];
+          }
+          toast("success", `Marked ${n} occurrence${n === 1 ? "" : "s"}`, "Check the marks, then apply them in the inspector.");
+          return { ...all, [id]: cur };
+        });
+      } catch (e) {
+        toast("error", "Search failed", errorText(e));
+      }
+    },
+    [id, toast],
+  );
+
+  const applyRedactions = useCallback(async () => {
+    if (id == null) return;
+    const marks = Object.entries(redactions[id] ?? {})
+      .filter(([, r]) => r.length)
+      .map(([page, rects]) => ({ page: Number(page), rects }));
+    if (!marks.length) return;
+    const fill: [number, number, number] | null = redactFill === "black" ? [0, 0, 0] : redactFill === "white" ? [1, 1, 1] : null;
+    const ok = await run(id, () => api.redact(id, marks, fill));
+    if (ok) setRedactions((all) => ({ ...all, [id]: {} }));
+  }, [id, redactions, redactFill, run]);
+
+  const print = useCallback(async () => {
+    if (!active?.pdf) return;
+    setBusy(true);
+    try {
+      await printDocument(active.pdf);
+    } catch (e) {
+      toast("error", "Printing failed", errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [active, toast]);
+
+  const flatten = useCallback(
+    (scope: "forms" | "annotations" | "all") => {
+      if (id == null) return;
+      setSelection(null);
+      run(id, () => api.flatten(id, scope));
+    },
+    [id, run],
   );
 
   const deleteSelectedAnnot = useCallback(() => {
@@ -547,6 +717,7 @@ export default function App() {
         if (k === "b") return handled(), setSidebarOpen((v) => !v);
         if (k === "i") return handled(), setInspectorOpen((v) => !v);
         if (k === ",") return handled(), setShowSettings(true);
+        if (k === "p" && active) return handled(), print();
         if ((k === "=" || k === "+") && active) return handled(), setZoom(Math.min(5, Math.round(scale * 1.2 * 100) / 100));
         if (k === "-" && active) return handled(), setZoom(Math.max(0.25, Math.round((scale / 1.2) * 100) / 100));
         if (k === "0" && active) return handled(), setZoom("fit-width");
@@ -568,13 +739,13 @@ export default function App() {
       }
       if (!active) return;
       if (TOOL_KEYS[k] && !e.shiftKey) {
-        setTool(TOOL_KEYS[k]);
-        setSelection(null);
+        chooseTool(TOOL_KEYS[k]);
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selection?.kind === "lines" && selection.lines.every((l) => l.editable)) editSelected({ delete: true });
         else if (selection?.kind === "annot" && selection.annot.removable) deleteSelectedAnnot();
+        else if (selection?.kind === "image") deleteImage();
         return;
       }
       if (e.key === "Enter" && selection?.kind === "lines" && selection.lines.length === 1 && selection.lines[0].editable && !selection.editing) {
@@ -614,6 +785,9 @@ export default function App() {
     setZoom,
     editSelected,
     deleteSelectedAnnot,
+    deleteImage,
+    chooseTool,
+    print,
   ]);
 
   // Selection belongs to one tool and one document.
@@ -654,6 +828,29 @@ export default function App() {
         onRedo={redo}
         onToggleTheme={() => setSettings({ ...settings, theme: theme === "dark" ? "light" : "dark" })}
         onSettings={() => setShowSettings(true)}
+        canTools={!!active?.pdf}
+        onTools={(anchor) =>
+          setMenu({
+            anchor,
+            align: "end",
+            items: [
+              { type: "heading", label: "Page marks" },
+              { label: "Watermark…", icon: Droplets, onSelect: () => setDialog({ kind: "marks", tab: "watermark" }) },
+              { label: "Header & footer…", icon: PanelTop, onSelect: () => setDialog({ kind: "marks", tab: "header" }) },
+              { label: "Bates numbers…", icon: Hash, onSelect: () => setDialog({ kind: "marks", tab: "bates" }) },
+              { label: "Page labels…", icon: Tags, onSelect: () => setDialog({ kind: "marks", tab: "labels" }) },
+              { type: "separator" },
+              { label: "Resize pages…", icon: Scaling, onSelect: () => setDialog({ kind: "resize" }) },
+              { label: "Split document…", icon: Scissors, onSelect: () => setDialog({ kind: "split" }) },
+              { type: "separator" },
+              { label: "Flatten form fields", icon: Layers, disabled: !fields.length, onSelect: () => flatten("forms") },
+              { label: "Flatten annotations", icon: Layers, onSelect: () => flatten("annotations") },
+              { label: "Flatten everything", icon: Layers, onSelect: () => flatten("all") },
+              { type: "separator" },
+              { label: "Print…", icon: Printer, shortcut: `${MOD}+P`, onSelect: () => print() },
+            ],
+          })
+        }
       />
 
       <main className="workbench" style={{ gridTemplateColumns: `${sidebarOpen && active?.pdf ? "auto " : ""}minmax(0, 1fr)${inspectorOpen && active ? " auto" : ""}` }}>
@@ -678,6 +875,10 @@ export default function App() {
             onDeleteAnnot={(page, index) => run(active.info.state.id, () => api.deleteAnnot(active.info.state.id, page, index), "Annotation deleted")}
             history={active.info.state.history}
             future={active.info.state.future}
+            labels={labels}
+            onSaveOutline={async (items) => {
+              await run(active.info.state.id, () => api.setOutline(active.info.state.id, items));
+            }}
             onHistoryGo={(steps) => {
               setSelection(null);
               run(active.info.state.id, () => api.historyGo(active.info.state.id, steps));
@@ -699,6 +900,8 @@ export default function App() {
             <>
               <Toolbar
                 tool={tool}
+                shape={shape}
+                onMenu={setMenu}
                 onTool={(t) => {
                   setTool(t);
                   setSelection(null);
@@ -769,6 +972,12 @@ export default function App() {
                 hits={findOpen ? viewerHits : []}
                 actions={actions}
                 busy={busy}
+                fields={fields}
+                redactions={redactions[active.info.state.id] ?? {}}
+                onRedactions={(page, rects) =>
+                  setRedactions((all) => ({ ...all, [active.info.state.id]: { ...(all[active.info.state.id] ?? {}), [page]: rects } }))
+                }
+                toolOptions={toolOptions}
               />
               <footer className="statusbar">
                 <span className="status-item is-mono">{Math.round(scale * 100)}%</span>
@@ -813,6 +1022,22 @@ export default function App() {
             onEditLine={editSelected}
             onStartEditing={(what) => selection?.kind === "lines" && setSelection({ ...selection, editing: what })}
             onDeleteAnnot={deleteSelectedAnnot}
+            onUpdateAnnot={(c) => selection?.kind === "annot" && actions.updateAnnot(selection.page, selection.annot.index, c)}
+            onReplaceImage={replaceImage}
+            onExtractImage={extractImage}
+            onDeleteImage={deleteImage}
+            toolOptions={toolOptions}
+            onToolOptions={setToolOptions}
+            redactCount={redactCount}
+            redactFill={redactFill}
+            onRedactFill={setRedactFill}
+            onRedactFind={markForRedaction}
+            onRedactApply={applyRedactions}
+            onRedactClear={() => setRedactions((all) => ({ ...all, [active.info.state.id]: {} }))}
+            onUncrop={(scope) => {
+              const all = Array.from({ length: active.info.state.pages }, (_, i) => i);
+              run(active.info.state.id, () => api.crop(active.info.state.id, scope === "page" ? [active.page] : all, null), "Crop removed");
+            }}
             onSaveMeta={(m: Meta) => run(active.info.state.id, () => api.setMeta(active.info.state.id, m), "Properties updated").then(async () => {
               const info = await api.info(active.info.state.id);
               updateDoc(active.info.state.id, (d) => ({ ...d, info }));
@@ -822,6 +1047,48 @@ export default function App() {
       </main>
 
       {menu && <Menu request={menu} onClose={() => setMenu(null)} />}
+      {dialog?.kind === "marks" && active && (
+        <PageMarksDialog
+          tab={dialog.tab}
+          docId={active.info.state.id}
+          revision={active.info.state.revision}
+          pages={active.info.state.pages}
+          current={active.page}
+          selected={active.selectedPages}
+          fonts={active.fonts}
+          catalog={catalog}
+          onApply={(pages, mark) => run(active.info.state.id, () => api.pageMarks(active.info.state.id, pages, mark), "Marks added")}
+          onSaveLabels={(ranges) => run(active.info.state.id, () => api.setLabels(active.info.state.id, ranges), "Page labels saved")}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "resize" && active && (
+        <ResizeDialog
+          pages={active.info.state.pages}
+          current={active.page}
+          selected={active.selectedPages}
+          onApply={(pages, w, h) => run(active.info.state.id, () => api.resizePages(active.info.state.id, pages, w, h), "Pages resized")}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "split" && active && (
+        <SplitDialog
+          docId={active.info.state.id}
+          pages={active.info.state.pages}
+          selected={active.selectedPages}
+          onSplit={async (ranges, folder) => {
+            try {
+              const files = await api.split(active.info.state.id, ranges, folder);
+              toast("success", `Saved ${files.length} file${files.length === 1 ? "" : "s"}`, folder);
+              return true;
+            } catch (e) {
+              toast("error", "Splitting failed", errorText(e));
+              return false;
+            }
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {showSettings && <SettingsDialog settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
       {password && (
         <PasswordDialog

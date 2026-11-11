@@ -34,9 +34,24 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  ChevronDown,
+  Circle,
+  Crop,
+  EyeOff,
+  ImagePlus,
+  Link2,
+  MoveUpRight,
+  Pentagon,
+  Slash,
+  Stamp,
+  TextQuote,
+  Wrench,
+} from "lucide-react";
+import type { MenuRequest } from "./ui/Menu";
 import { IconButton } from "./ui/Button";
 import { Lozenge } from "./ui/Feedback";
-import type { Tool, ZoomMode } from "../lib/types";
+import type { ShapeTool, Tool, ZoomMode } from "../lib/types";
 import { cx, MOD } from "../lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -69,6 +84,8 @@ export function TopBar({
   onRedo,
   onToggleTheme,
   onSettings,
+  onTools,
+  canTools,
 }: {
   hud: HudInfo | null;
   theme: "light" | "dark";
@@ -85,6 +102,8 @@ export function TopBar({
   onRedo: () => void;
   onToggleTheme: () => void;
   onSettings: () => void;
+  onTools: (anchor: HTMLElement) => void;
+  canTools: boolean;
 }) {
   return (
     <header className="topbar" data-tauri-drag-region>
@@ -145,6 +164,7 @@ export function TopBar({
           label={theme === "dark" ? "Light theme" : "Dark theme"}
           onClick={onToggleTheme}
         />
+        <IconButton icon={Wrench} label="Document tools" disabled={!canTools} onClick={(e) => onTools(e.currentTarget)} />
         <IconButton icon={SettingsIcon} label="Settings" shortcut={`${MOD}+,`} onClick={onSettings} />
         <IconButton
           icon={PanelRight}
@@ -226,13 +246,14 @@ interface ToolDef {
 }
 
 const VIEW_TOOLS: ToolDef[] = [
-  { tool: "select", icon: MousePointer2, label: "Select and copy text", key: "V" },
+  { tool: "select", icon: MousePointer2, label: "Select text, fill in forms, move annotations", key: "V" },
   { tool: "hand", icon: Hand, label: "Hand: drag to scroll", key: "H" },
 ];
 
 const EDIT_TOOLS: ToolDef[] = [
-  { tool: "edit", icon: TextCursorInput, label: "Edit text in its own font", key: "E" },
+  { tool: "edit", icon: TextCursorInput, label: "Edit text and images", key: "E" },
   { tool: "text", icon: Type, label: "Add text", key: "T" },
+  { tool: "image", icon: ImagePlus, label: "Insert image", key: "I" },
 ];
 
 const MARK_TOOLS: ToolDef[] = [
@@ -241,24 +262,52 @@ const MARK_TOOLS: ToolDef[] = [
   { tool: "strikeout", icon: Strikethrough, label: "Strike out", key: "K" },
   { tool: "note", icon: MessageSquarePlus, label: "Sticky note", key: "N" },
   { tool: "ink", icon: PenLine, label: "Draw", key: "D" },
+];
+
+export const SHAPE_TOOLS: ToolDef[] = [
   { tool: "rect", icon: Square, label: "Rectangle", key: "R" },
+  { tool: "ellipse", icon: Circle, label: "Ellipse", key: "O" },
+  { tool: "line", icon: Slash, label: "Line", key: "/" },
+  { tool: "arrow", icon: MoveUpRight, label: "Arrow", key: "A" },
+  { tool: "polygon", icon: Pentagon, label: "Polygon", key: "P" },
+];
+
+const MORE_MARK_TOOLS: ToolDef[] = [
+  { tool: "textbox", icon: TextQuote, label: "Text box", key: "B" },
+  { tool: "stamp", icon: Stamp, label: "Stamp", key: "S" },
+  { tool: "link", icon: Link2, label: "Links", key: "L" },
+];
+
+const PROTECT_TOOLS: ToolDef[] = [
+  { tool: "redact", icon: EyeOff, label: "Redact: remove content for good", key: "X" },
+  { tool: "crop", icon: Crop, label: "Crop pages", key: "C" },
 ];
 
 export const TOOL_KEYS: Record<string, Tool> = Object.fromEntries(
-  [...VIEW_TOOLS, ...EDIT_TOOLS, ...MARK_TOOLS].map((t) => [t.key.toLowerCase(), t.tool]),
+  [...VIEW_TOOLS, ...EDIT_TOOLS, ...MARK_TOOLS, ...SHAPE_TOOLS, ...MORE_MARK_TOOLS, ...PROTECT_TOOLS].map((t) => [t.key.toLowerCase(), t.tool]),
 );
 
 export const TOOL_HINTS: Record<Tool, string> = {
-  select: "Drag across text to select it, then copy. Click a note or drawing to inspect it.",
+  select: "Select and copy text, fill in form fields, and click a note or shape to edit it; drag a selected one to move it.",
   hand: "Drag to scroll the document.",
-  edit: "Click a line to select it (Shift-click or drag a box for more). Double-click to rewrite a line or a whole paragraph. Drag selected lines to move them.",
+  edit: "Click a line or image to select it (Shift-click or drag a box for more lines). Double-click to rewrite a line or a paragraph. Drag to move; drag an image's corner to resize.",
   text: "Click on the page where the new text should start.",
+  image: "Click where the image's top-left corner should go, then choose a PNG or JPEG.",
   highlight: "Drag across text to highlight exactly those characters, or click a line to highlight all of it.",
   underline: "Drag across text to underline it, or click a line to underline all of it.",
   strikeout: "Drag across text to strike it out, or click a line to strike out all of it.",
   note: "Click where the sticky note should go.",
   ink: "Draw on the page. Each stroke becomes an ink annotation.",
   rect: "Drag to draw a rectangle.",
+  ellipse: "Drag to draw an ellipse.",
+  line: "Drag to draw a line.",
+  arrow: "Drag from the tail to the tip of the arrow.",
+  polygon: "Click to place corners; double-click or press Enter to finish.",
+  textbox: "Drag out a box, then type its text.",
+  stamp: "Click to place the stamp chosen in the inspector.",
+  link: "Drag over the area that should be a link, then enter a web address or page. Click an existing link to edit it.",
+  redact: "Drag over everything that must go. Marked areas are removed from the file when you apply them in the inspector.",
+  crop: "Drag the area to keep, then choose which pages to crop.",
 };
 
 function ToolGroup({ tools, value, onChange }: { tools: ToolDef[]; value: Tool; onChange: (t: Tool) => void }) {
@@ -279,6 +328,31 @@ function ToolGroup({ tools, value, onChange }: { tools: ToolDef[]; value: Tool; 
   );
 }
 
+/** One button for the last shape used, with a menu of the others. */
+function ShapeButton({ tool, shape, onTool, onMenu }: { tool: Tool; shape: ShapeTool; onTool: (t: Tool) => void; onMenu: (m: MenuRequest) => void }) {
+  const def = SHAPE_TOOLS.find((s) => s.tool === shape) ?? SHAPE_TOOLS[0];
+  const active = SHAPE_TOOLS.some((s) => s.tool === tool);
+  return (
+    <span className="shape-button">
+      <IconButton icon={def.icon} label={def.label} shortcut={def.key} spacing="compact" selected={active} onClick={() => onTool(def.tool)} />
+      <button
+        type="button"
+        className="shape-more"
+        aria-label="More shapes"
+        data-tooltip="More shapes"
+        onClick={(e) =>
+          onMenu({
+            anchor: e.currentTarget,
+            items: SHAPE_TOOLS.map((s) => ({ label: s.label, icon: s.icon, shortcut: s.key, checked: s.tool === tool, onSelect: () => onTool(s.tool) })),
+          })
+        }
+      >
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
 export function Toolbar({
   tool,
   onTool,
@@ -290,7 +364,11 @@ export function Toolbar({
   onPage,
   onFind,
   findOpen,
+  shape,
+  onMenu,
 }: {
+  shape: ShapeTool;
+  onMenu: (m: MenuRequest) => void;
   tool: Tool;
   onTool: (t: Tool) => void;
   zoom: ZoomMode;
@@ -314,7 +392,16 @@ export function Toolbar({
     <div className="toolbar" role="toolbar" aria-label="Tools">
       <ToolGroup tools={VIEW_TOOLS} value={tool} onChange={onTool} />
       <ToolGroup tools={EDIT_TOOLS} value={tool} onChange={onTool} />
-      <ToolGroup tools={MARK_TOOLS} value={tool} onChange={onTool} />
+      <div className="toolgroup" role="group">
+        {MARK_TOOLS.map((t) => (
+          <IconButton key={t.tool} icon={t.icon} label={t.label} shortcut={t.key} spacing="compact" selected={tool === t.tool} onClick={() => onTool(t.tool)} />
+        ))}
+        <ShapeButton tool={tool} shape={shape} onTool={onTool} onMenu={onMenu} />
+        {MORE_MARK_TOOLS.map((t) => (
+          <IconButton key={t.tool} icon={t.icon} label={t.label} shortcut={t.key} spacing="compact" selected={tool === t.tool} onClick={() => onTool(t.tool)} />
+        ))}
+      </div>
+      <ToolGroup tools={PROTECT_TOOLS} value={tool} onChange={onTool} />
       <span className="spacer" />
       <div className="page-nav">
         <IconButton icon={ChevronLeft} label="Previous page" shortcut="PgUp" spacing="compact" disabled={page <= 0} onClick={() => onPage(page - 1)} />

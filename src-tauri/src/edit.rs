@@ -110,6 +110,20 @@ fn page_res_loc(doc: &mut Document, page_id: ObjectId) -> Result<ResLoc, String>
 
 /// Makes a font object available to a content stream and returns its resource name.
 pub fn add_font_resource(doc: &mut Document, page_id: ObjectId, src: Src, font_id: ObjectId) -> Result<Vec<u8>, String> {
+    add_resource(doc, page_id, src, "Font", font_id, "InqF")
+}
+
+/// Makes an object available to a content stream under a resource category
+/// (Font, XObject, ExtGState, …) and returns its name; an existing entry for
+/// the same object is reused.
+pub fn add_resource(
+    doc: &mut Document,
+    page_id: ObjectId,
+    src: Src,
+    category: &str,
+    obj_id: ObjectId,
+    prefix: &str,
+) -> Result<Vec<u8>, String> {
     let loc = match src {
         Src::Page => page_res_loc(doc, page_id)?,
         Src::Form(fid) => {
@@ -121,36 +135,65 @@ pub fn add_font_resource(doc: &mut Document, page_id: ObjectId, src: Src, font_i
             }
         }
     };
-    let font_ref = match res_dict_mut(doc, &loc)?.get(b"Font") {
+    let cat = category.as_bytes();
+    let sub_ref = match res_dict_mut(doc, &loc)?.get(cat) {
         Ok(Object::Reference(id)) => Some(*id),
         _ => None,
     };
-    let existing: Dictionary = match font_ref {
+    let existing: Dictionary = match sub_ref {
         Some(id) => doc.get_dictionary(id).cloned().unwrap_or_default(),
-        None => res_dict_mut(doc, &loc)?.get(b"Font").and_then(Object::as_dict).cloned().unwrap_or_default(),
+        None => res_dict_mut(doc, &loc)?.get(cat).and_then(Object::as_dict).cloned().unwrap_or_default(),
     };
     for (name, obj) in existing.iter() {
-        if obj.as_reference().ok() == Some(font_id) {
+        if obj.as_reference().ok() == Some(obj_id) {
             return Ok(name.clone());
         }
     }
     let mut n = existing.len() + 1;
     let name = loop {
-        let candidate = format!("InqF{n}").into_bytes();
+        let candidate = format!("{prefix}{n}").into_bytes();
         if !existing.has(&candidate) {
             break candidate;
         }
         n += 1;
     };
-    match font_ref {
-        Some(id) => doc.get_dictionary_mut(id).map_err(err)?.set(name.clone(), Object::Reference(font_id)),
+    match sub_ref {
+        Some(id) => doc.get_dictionary_mut(id).map_err(err)?.set(name.clone(), Object::Reference(obj_id)),
         None => {
-            let mut fonts = existing;
-            fonts.set(name.clone(), Object::Reference(font_id));
-            res_dict_mut(doc, &loc)?.set("Font", Object::Dictionary(fonts));
+            let mut d = existing;
+            d.set(name.clone(), Object::Reference(obj_id));
+            res_dict_mut(doc, &loc)?.set(category, Object::Dictionary(d));
         }
     }
     Ok(name)
+}
+
+/// A graphics state with the given fill and stroke opacity, as a page resource name.
+pub fn opacity_state(doc: &mut Document, page_id: ObjectId, opacity: f32) -> Result<Vec<u8>, String> {
+    let id = doc.add_object(lopdf::dictionary! { "Type" => "ExtGState", "ca" => real(opacity), "CA" => real(opacity) });
+    add_resource(doc, page_id, Src::Page, "ExtGState", id, "InqGS")
+}
+
+/// Adds operators to a page, over everything (or under, with `behind`).
+/// The existing content is wrapped in q/Q so its state cannot leak.
+pub fn add_page_ops(doc: &mut Document, page_id: ObjectId, ops: Vec<Operation>, behind: bool) -> Result<(), String> {
+    if ops.is_empty() {
+        return Ok(());
+    }
+    let existing = crate::interp::page_content_ops(doc, page_id)?;
+    let mut out = Vec::with_capacity(existing.len() + ops.len() + 2);
+    if behind {
+        out.extend(ops);
+        out.push(Operation::new("q", vec![]));
+        out.extend(existing);
+        out.push(Operation::new("Q", vec![]));
+    } else {
+        out.push(Operation::new("q", vec![]));
+        out.extend(existing);
+        out.push(Operation::new("Q", vec![]));
+        out.extend(ops);
+    }
+    set_ops(doc, page_id, Src::Page, out)
 }
 
 /// Writes operators back to their stream: a page gets one fresh content stream,
@@ -1194,4 +1237,43 @@ mod tests {
         let bold2: String = new2.iter().zip(&m2).filter(|(_, s)| **s == 1).map(|(c, _)| *c).collect();
         assert_eq!(bold2, "BOLD");
     }
+}
+
+/// Sets one line of text on a page: in any font choice, anchored at a point
+/// in user space with `align` 0 (start), 0.5 (centre) or 1 (end) along an
+/// angle in degrees, optionally see-through and behind the page content.
+/// Returns notices about font substitutions.
+#[allow(clippy::too_many_arguments)]
+pub fn place_text(
+    doc: &mut Document,
+    page_id: ObjectId,
+    text: &str,
+    font: &FontChoice,
+    size: f32,
+    color: [f32; 3],
+    anchor: (f32, f32),
+    angle: f32,
+    align: f32,
+    opacity: f32,
+    behind: bool,
+) -> Result<Vec<String>, String> {
+    if text.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let target = Target::Choice(font.clone());
+    let looks = vec![Look { size, fill: Fill::Rgb(color[0], color[1], color[2]), tc: 0.0 }];
+    let mut enc = Encoder::new(page_id);
+    let chars: Vec<char> = text.replace(['\r', '\n'], " ").chars().collect();
+    let items = encode_styled(&mut enc, doc, Src::Page, &chars, &vec![0; chars.len()], std::slice::from_ref(&target))?;
+    let width: f32 = items.iter().map(|it| it.enc.w / 1000.0 * size).sum();
+    let (s, c) = angle.to_radians().sin_cos();
+    let start = (anchor.0 - c * width * align, anchor.1 - s * width * align);
+    let mut ops = emit_lines(&[(items, start)], &looks, IDENTITY, [c, s, -s, c], 1.0)?;
+    if opacity < 1.0 {
+        let gs = opacity_state(doc, page_id, opacity.clamp(0.02, 1.0))?;
+        ops.insert(1, Operation::new("gs", vec![Object::Name(gs)]));
+    }
+    let notices = enc.finish(doc)?;
+    add_page_ops(doc, page_id, ops, behind)?;
+    Ok(notices)
 }

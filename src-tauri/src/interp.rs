@@ -149,6 +149,62 @@ pub struct Run {
     pub th: f32,
     /// Character boundaries along the baseline from `start` (one more than characters).
     pub chars: Vec<f32>,
+    /// What the operator shows, glyph by glyph, for redaction.
+    pub items: Vec<RItem>,
+}
+
+/// One element of a shown string: a glyph (its bytes, where it starts and
+/// ends along the baseline in points, and its advance in text space), or a
+/// TJ position adjustment.
+#[derive(Clone, Debug)]
+pub enum RItem {
+    Glyph { bytes: Vec<u8>, from: f32, to: f32, tx: f32 },
+    Adjust(f32),
+}
+
+/// An image drawn with `Do` (or inline with `BI`).
+#[derive(Clone, Debug)]
+pub struct ImagePlacement {
+    pub src: Src,
+    pub op: usize,
+    /// Resource name; empty for inline images.
+    pub name: Vec<u8>,
+    pub id: Option<ObjectId>,
+    /// Maps the unit square onto the page.
+    pub ctm: Matrix,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl ImagePlacement {
+    /// Corners in user space: bottom-left, bottom-right, top-right, top-left.
+    pub fn quad(&self) -> [[f32; 2]; 4] {
+        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)].map(|(x, y)| {
+            let p = apply(&self.ctm, x, y);
+            [p.0, p.1]
+        })
+    }
+
+    pub fn bbox(&self) -> [f32; 4] {
+        let q = self.quad();
+        let xs = q.iter().map(|p| p[0]);
+        let ys = q.iter().map(|p| p[1]);
+        [
+            xs.clone().fold(f32::MAX, f32::min),
+            ys.clone().fold(f32::MAX, f32::min),
+            xs.fold(f32::MIN, f32::max),
+            ys.fold(f32::MIN, f32::max),
+        ]
+    }
+}
+
+/// A painted vector path: the operators that build and paint it, and its bounds.
+#[derive(Clone, Debug)]
+pub struct PathPaint {
+    pub src: Src,
+    pub first: usize,
+    pub last: usize,
+    pub bbox: [f32; 4],
 }
 
 #[derive(Serialize, Clone)]
@@ -237,6 +293,8 @@ pub struct Scan {
     pub blocks: Vec<Block>,
     /// Whether content can be appended to the page without wrapping it in q/Q.
     pub clean_end: bool,
+    pub images: Vec<ImagePlacement>,
+    pub paths: Vec<PathPaint>,
 }
 
 /// The page's resources, following inheritance.
@@ -289,6 +347,8 @@ struct Ctx<'a> {
     form_uses: HashMap<ObjectId, usize>,
     font_cache: HashMap<ObjectId, Arc<PdfFont>>,
     stack: Vec<ObjectId>,
+    images: Vec<ImagePlacement>,
+    paths: Vec<PathPaint>,
 }
 
 impl Ctx<'_> {
@@ -321,6 +381,8 @@ pub fn scan_page(doc: &Document, page_id: ObjectId) -> Result<Scan, String> {
         form_uses: HashMap::new(),
         font_cache: HashMap::new(),
         stack: Vec::new(),
+        images: Vec::new(),
+        paths: Vec::new(),
     };
     let fonts = ctx.fonts(&res, &format!("p{}", page_id.0));
     let end = interpret(&mut ctx, &ops, Src::Page, &res, &fonts, GState::default());
@@ -328,7 +390,7 @@ pub fn scan_page(doc: &Document, page_id: ObjectId) -> Result<Scan, String> {
     let clean_end = end.0 && end.1 == IDENTITY;
     let mut lines = group(&ctx.runs, &ctx.form_uses);
     let blocks = paragraphs(&mut lines);
-    Ok(Scan { ops: ctx.ops, runs: ctx.runs, lines, blocks, clean_end })
+    Ok(Scan { ops: ctx.ops, runs: ctx.runs, lines, blocks, clean_end, images: ctx.images, paths: ctx.paths })
 }
 
 fn fill_from(space: &[u8], comps: &[Object]) -> Fill {
@@ -355,8 +417,55 @@ fn interpret(
     let mut tm = IDENTITY;
     let mut tlm = IDENTITY;
     let n = |o: &Operation, i: usize| o.operands.get(i).and_then(num).unwrap_or(0.0);
+    let mut path_start: Option<usize> = None;
+    let mut path_box = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
 
     for (idx, op) in ops.iter().enumerate() {
+        // Path construction and painting, for redaction.
+        let mut grow = |pts: &[(f32, f32)], ctm: &Matrix| {
+            for (x, y) in pts {
+                let p = apply(ctm, *x, *y);
+                path_box[0] = path_box[0].min(p.0);
+                path_box[1] = path_box[1].min(p.1);
+                path_box[2] = path_box[2].max(p.0);
+                path_box[3] = path_box[3].max(p.1);
+            }
+        };
+        match op.operator.as_str() {
+            "m" | "l" => {
+                path_start.get_or_insert(idx);
+                grow(&[(n(op, 0), n(op, 1))], &gs.ctm);
+            }
+            "c" => {
+                path_start.get_or_insert(idx);
+                grow(&[(n(op, 0), n(op, 1)), (n(op, 2), n(op, 3)), (n(op, 4), n(op, 5))], &gs.ctm);
+            }
+            "v" | "y" => {
+                path_start.get_or_insert(idx);
+                grow(&[(n(op, 0), n(op, 1)), (n(op, 2), n(op, 3))], &gs.ctm);
+            }
+            "re" => {
+                path_start.get_or_insert(idx);
+                let (x, y, w, h) = (n(op, 0), n(op, 1), n(op, 2), n(op, 3));
+                grow(&[(x, y), (x + w, y), (x + w, y + h), (x, y + h)], &gs.ctm);
+            }
+            "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "n" => {
+                if let Some(first) = path_start.take() {
+                    if op.operator != "n" {
+                        ctx.paths.push(PathPaint { src, first, last: idx, bbox: path_box });
+                    }
+                }
+                path_box = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+            }
+            "BI" => {
+                if let Some(Object::Stream(st)) = op.operands.first() {
+                    let w = st.dict.get(b"W").or_else(|_| st.dict.get(b"Width")).ok().and_then(num).unwrap_or(0.0) as u32;
+                    let h = st.dict.get(b"H").or_else(|_| st.dict.get(b"Height")).ok().and_then(num).unwrap_or(0.0) as u32;
+                    ctx.images.push(ImagePlacement { src, op: idx, name: Vec::new(), id: None, ctm: gs.ctm, width: w, height: h });
+                }
+            }
+            _ => {}
+        }
         match op.operator.as_str() {
             "q" => stack.push(gs.clone()),
             "Q" => {
@@ -432,7 +541,31 @@ fn interpret(
             "sc" | "scn" => gs.fill = fill_from(&gs.fill_space, &op.operands),
             "Do" => {
                 let Some(Object::Name(name)) = op.operands.first() else { continue };
-                form(ctx, res, name, &gs);
+                let doc = ctx.doc;
+                let target = match get(doc, res, b"XObject") {
+                    Some(Object::Dictionary(x)) => x.get(name).ok().and_then(|o| o.as_reference().ok()),
+                    _ => None,
+                };
+                let image = target.and_then(|id| match doc.get_object(id) {
+                    Ok(Object::Stream(st)) if st.dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Image") => {
+                        let w = st.dict.get(b"Width").ok().and_then(num).unwrap_or(0.0) as u32;
+                        let h = st.dict.get(b"Height").ok().and_then(num).unwrap_or(0.0) as u32;
+                        Some((id, w, h))
+                    }
+                    _ => None,
+                });
+                match image {
+                    Some((id, w, h)) => ctx.images.push(ImagePlacement {
+                        src,
+                        op: idx,
+                        name: name.clone(),
+                        id: Some(id),
+                        ctm: gs.ctm,
+                        width: w,
+                        height: h,
+                    }),
+                    None => form(ctx, res, name, &gs),
+                }
             }
             "Tj" | "TJ" | "'" | "\"" => {
                 if op.operator == "'" || op.operator == "\"" {
@@ -465,16 +598,21 @@ fn interpret(
                 };
                 let mut text = String::new();
                 let mut chars: Vec<f32> = vec![0.0];
+                let mut ritems: Vec<RItem> = Vec::new();
                 for item in items {
                     match item {
                         Object::String(bytes, _) => {
-                            for g in font.decode(bytes) {
+                            let step = font.code_len.max(1) as usize;
+                            for (gi, g) in font.decode(bytes).into_iter().enumerate() {
                                 let w0 = g.width * font.width_scale;
                                 let space = if font.code_len == 1 && g.code == 32 { gs.tw } else { 0.0 };
                                 let tx = (w0 * gs.size + gs.tc + space) * gs.th;
                                 let before = *chars.last().unwrap();
+                                let from = along(&tm);
                                 tm = mul(&translate(tx, 0.0), &tm);
                                 let after = along(&tm);
+                                let gb = bytes.get(gi * step..((gi + 1) * step).min(bytes.len())).unwrap_or(&[]).to_vec();
+                                ritems.push(RItem::Glyph { bytes: gb, from, to: after, tx });
                                 let k = g.text.chars().count().max(1);
                                 for i in 0..g.text.chars().count() {
                                     chars.push(before + (after - before) * (i + 1) as f32 / k as f32);
@@ -484,6 +622,7 @@ fn interpret(
                         }
                         o => {
                             if let Some(adj) = num(o) {
+                                ritems.push(RItem::Adjust(adj));
                                 let tx = -adj / 1000.0 * gs.size * gs.th;
                                 tm = mul(&translate(tx, 0.0), &tm);
                                 let after = along(&tm);
@@ -522,6 +661,7 @@ fn interpret(
                     tc: gs.tc,
                     th: gs.th,
                     chars,
+                    items: ritems,
                 });
             }
             _ => {}

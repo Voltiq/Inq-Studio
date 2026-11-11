@@ -166,22 +166,128 @@ export interface AnnotInfo {
   contents: string;
   author: string;
   color: [number, number, number] | null;
+  fill: [number, number, number] | null;
+  opacity: number;
+  width: number;
+  /** For links: "https://…" or "page N". */
+  target: string | null;
   removable: boolean;
+  /** Its appearance can be redrawn after changes. */
+  editable: boolean;
 }
 
-export type AnnotKind = "highlight" | "underline" | "strikeout" | "note" | "ink" | "rect";
+export type AnnotKind =
+  | "highlight"
+  | "underline"
+  | "strikeout"
+  | "note"
+  | "ink"
+  | "rect"
+  | "ellipse"
+  | "line"
+  | "arrow"
+  | "polygon"
+  | "textbox"
+  | "stamp"
+  | "link";
+
+export type Rect = [number, number, number, number];
 
 export interface NewAnnot {
   kind: AnnotKind;
   quads?: Quad[];
-  rect?: [number, number, number, number];
+  rect?: Rect;
   paths?: Point[][];
+  points?: Point[];
   color: [number, number, number];
+  fill?: [number, number, number];
   contents?: string;
   author?: string;
   width?: number;
   opacity?: number;
+  size?: number;
+  label?: string;
+  uri?: string;
+  page?: number;
 }
+
+export interface AnnotChange {
+  color?: [number, number, number];
+  /** null removes the fill. */
+  fill?: [number, number, number] | null;
+  contents?: string;
+  opacity?: number;
+  width?: number;
+  dx?: number;
+  dy?: number;
+  uri?: string;
+  page?: number;
+}
+
+export interface WidgetInfo {
+  page: number;
+  rect: Rect;
+  onState: string | null;
+  checked: boolean;
+}
+
+export interface FieldInfo {
+  name: string;
+  kind: "text" | "checkbox" | "radio" | "combo" | "list" | "button" | "signature" | "unknown";
+  value: string;
+  options: string[];
+  multiline: boolean;
+  readonly: boolean;
+  required: boolean;
+  maxLen: number | null;
+  widgets: WidgetInfo[];
+}
+
+export interface ImageInfo {
+  index: number;
+  quad: Quad;
+  bbox: Rect;
+  width: number;
+  height: number;
+  inline: boolean;
+  filter: string;
+  colorSpace: string;
+  bits: number;
+  hasAlpha: boolean;
+  dpi: number;
+}
+
+export interface Found {
+  page: number;
+  quads: Quad[];
+}
+
+export interface Bookmark {
+  title: string;
+  page: number | null;
+  top?: number | null;
+  open: boolean;
+  children: Bookmark[];
+}
+
+export interface LabelRange {
+  start: number;
+  style: "D" | "r" | "R" | "a" | "A" | "";
+  prefix: string;
+  first: number;
+}
+
+export interface MarkStyle {
+  font: FontChoice;
+  size: number;
+  color: [number, number, number];
+  opacity: number;
+}
+
+export type Mark =
+  | { kind: "watermark"; text: string; style: MarkStyle; angle: number; behind: boolean }
+  | { kind: "headerFooter"; header: [string, string, string]; footer: [string, string, string]; style: MarkStyle; margin: number; firstNumber: number }
+  | { kind: "bates"; prefix: string; suffix: string; start: number; digits: number; position: string; style: MarkStyle; margin: number };
 
 export type SaveMode = "auto" | "full" | "incremental";
 
@@ -222,6 +328,29 @@ export const api = {
   deleteAnnot: (id: number, page: number, index: number) => invoke<DocState>("annot_delete", { id, page, index }),
   fileExists: (path: string) => invoke<boolean>("file_exists", { path }),
   startupFiles: () => invoke<string[]>("startup_files"),
+  updateAnnot: (id: number, page: number, index: number, change: AnnotChange) =>
+    invoke<DocState>("annot_update", { id, page, index, change }),
+  fields: (id: number) => invoke<FieldInfo[]>("form_fields", { id }),
+  setField: (id: number, name: string, value: string) => invoke<DocState>("form_set", { id, name, value }),
+  flatten: (id: number, scope: "forms" | "annotations" | "all") => invoke<EditResult>("doc_flatten", { id, scope }),
+  images: (id: number, page: number) => invoke<ImageInfo[]>("images_list", { id, page }),
+  insertImage: (id: number, page: number, path: string, at: Point | null) => invoke<DocState>("image_insert", { id, page, path, at }),
+  placeImage: (id: number, page: number, index: number, bbox: Rect) => invoke<DocState>("image_place", { id, page, index, bbox }),
+  deleteImage: (id: number, page: number, index: number) => invoke<DocState>("image_delete", { id, page, index }),
+  replaceImage: (id: number, page: number, index: number, path: string) => invoke<DocState>("image_replace", { id, page, index, path }),
+  extractImage: (id: number, page: number, index: number, path: string) => invoke<string>("image_extract", { id, page, index, path }),
+  find: (id: number, query: string) => invoke<Found[]>("text_find", { id, query }),
+  redact: (id: number, marks: { page: number; rects: Rect[] }[], fill: [number, number, number] | null) =>
+    invoke<EditResult>("redact", { id, marks, fill }),
+  pageMarks: (id: number, pages: number[], mark: Mark) => invoke<EditResult>("page_marks", { id, pages, mark }),
+  labels: (id: number) => invoke<{ ranges: LabelRange[]; strings: string[] }>("labels_get", { id }),
+  setLabels: (id: number, ranges: LabelRange[]) => invoke<DocState>("labels_set", { id, ranges }),
+  outline: (id: number) => invoke<Bookmark[]>("outline_get", { id }),
+  setOutline: (id: number, items: Bookmark[]) => invoke<DocState>("outline_set", { id, items }),
+  crop: (id: number, pages: number[], area: Rect | null) => invoke<DocState>("pages_crop", { id, pages, area }),
+  resizePages: (id: number, pages: number[], width: number, height: number) =>
+    invoke<DocState>("pages_resize", { id, pages, width, height }),
+  split: (id: number, ranges: number[][], folder: string) => invoke<string[]>("doc_split", { id, ranges, folder }),
 };
 
 /** Error text from a rejected command. */

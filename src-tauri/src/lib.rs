@@ -5,6 +5,11 @@ mod cmap;
 mod edit;
 mod encoding;
 mod fonts;
+mod forms;
+mod images;
+mod marks;
+mod outline;
+mod redact;
 mod interp;
 mod pages;
 mod store;
@@ -14,6 +19,8 @@ mod util;
 mod tests;
 #[cfg(test)]
 mod tests_v2;
+#[cfg(test)]
+mod tests_v3;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -68,6 +75,26 @@ pub fn run() {
             store::annot_delete,
             store::file_exists,
             store::startup_files,
+            store::annot_update,
+            store::form_fields,
+            store::form_set,
+            store::doc_flatten,
+            store::images_list,
+            store::image_insert,
+            store::image_place,
+            store::image_delete,
+            store::image_replace,
+            store::image_extract,
+            store::text_find,
+            store::redact,
+            store::page_marks,
+            store::labels_get,
+            store::labels_set,
+            store::outline_get,
+            store::outline_set,
+            store::pages_crop,
+            store::pages_resize,
+            store::doc_split,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

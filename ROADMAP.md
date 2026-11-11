@@ -71,7 +71,7 @@ streams — real, selectable, searchable text, not a patch painted over the page
 
 ---
 
-## v0.2 — Editing depth (this build, 2026-11-10)
+## v0.2 — Editing depth (2026-11-10)
 
 ### Engine (Rust)
 - [x] **Paragraph model**: lines that stack with even leading and aligned edges become paragraphs (left, right,
@@ -117,19 +117,60 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - The new on-page interactions (paragraph editor, box selection, snapping, character-level markup, history) are
   type-checked and the build was launched, but they have not been clicked through by hand or by UI tests
 
-## v0.3 — Forms, objects and pages
+## v0.3 — Forms, objects and pages (this build, 2026-11-11)
 
-- [ ] AcroForm filling (text, check box, radio, list) with appearance regeneration
-- [ ] Flatten annotations and forms
-- [ ] Images: insert, replace, move, resize, delete, extract
-- [ ] Shapes and markup: lines, arrows, ellipses, polygons, free-text boxes, stamps
-- [ ] Edit existing annotations (colour, text, position)
-- [ ] True redaction: remove text, images and vector content under the redaction, not just cover it
-- [ ] Watermarks, headers and footers, Bates numbering, page labels
-- [ ] Bookmarks: create, rename, reorder
-- [ ] Links: create and edit
-- [ ] Crop and resize pages, split documents
-- [ ] Print
+### Engine (Rust)
+- [x] **Forms**: the AcroForm field tree read with inherited attributes (text, check box, radio, combo, list,
+      button, signature); filling regenerates each widget's appearance in the field's own font (`/DA`, `/DR`),
+      with auto-size, multi-line wrapping and alignment; characters the form font lacks come from Arial
+- [x] **Flatten** form fields, annotations or both: appearances drawn into the page as Form XObjects with the
+      spec's BBox-to-Rect mapping; links are kept
+- [x] **Images**: list placements (inline images included), insert PNG/JPEG (JPEGs embedded as they are,
+      transparency as a soft mask), move and resize (orientation kept), replace (fitted into the same box),
+      delete, extract (JPEG as stored, everything else as PNG); decoding for RGB, Gray, CMYK, ICC, Indexed and
+      1–16-bit images
+- [x] **Shapes and markup**: ellipse, line, arrow, polygon, text box, stamp, link, alongside the v0.1 kinds; every
+      appearance is generated from the annotation's own data
+- [x] **Edit existing annotations**: colour, fill, text, opacity, line width, position, link target; the
+      appearance is redrawn
+- [x] **True redaction**: glyphs under a box are removed from their text operators and replaced by an equal gap
+      (the rest of the line does not move); images fully covered are removed, partly covered ones get the
+      covered pixels blacked out in a new copy; drawings fully covered are removed; annotations touching a box
+      are deleted; optional cover box; find-and-mark every occurrence of a text
+- [x] **Watermarks, headers and footers, Bates numbers** in any document, installed or standard font, upright on
+      rotated pages, with `{page}`, `{pages}`, `{date}`, `{file}` placeholders; watermarks see-through and
+      optionally behind the content
+- [x] **Page labels**: read, written, and computed as readers show them (i, ii … A-1 …)
+- [x] **Bookmarks**: read (named destinations included) and rewritten as a fresh outline tree
+- [x] **Crop** pages, **resize** pages to a paper size (content and annotations scaled and centred), **split**
+      into files by ranges
+- [x] 42 tests (13 new): every annotation kind, editing, flattening with filled-in values readable as page text,
+      the full image lifecycle, glyph-exact redaction, partial image redaction, marks on rotated pages, labels,
+      bookmarks, crop, resize, split
+
+### App
+- [x] Form fields are filled in right on the page with the Select tool (text, check boxes, radio buttons, lists)
+- [x] Select tool: click a note, shape, stamp or text box to edit it in the inspector; drag it to move it
+- [x] Edit tool: click an image to select it, drag to move, drag the corner to resize; replace, save or delete it
+- [x] New tools: insert image, shapes menu (rectangle, ellipse, line, arrow, polygon), text box, stamp, links,
+      redact, crop
+- [x] Redaction workflow: marked areas shown hatched, "Mark all" for a word or name, a cover choice, and a
+      two-step confirmation before applying
+- [x] Document tools menu: watermark, header and footer, Bates numbers, page labels, resize pages, split
+      document, flatten, print
+- [x] Editable bookmarks in the sidebar (add for the current page, rename, delete, reorder, indent, retarget)
+- [x] Page labels shown under thumbnails
+- [x] **Print** through the system dialog (pages rendered at 200 dpi, each at its own paper size)
+
+### Known limits of v0.3
+- Signature fields are listed but cannot be signed yet (v0.4)
+- Redaction removes drawings only when they lie entirely under a box; a partly covered drawing stays (the cover
+  box hides it on screen, but it remains in the file)
+- Redacting text inside a form used several times removes it from every copy
+- Printing goes through rendered page images, so very large documents take a while to prepare
+- Links on rotated pages are placed by their rectangle only (no quad points)
+- The new on-page interactions are type-checked, the build was launched against a generated document and two
+  layout bugs found there were fixed, but the tools have not been clicked through by hand or by UI tests
 
 ## v0.4 — Professional
 

@@ -1467,3 +1467,299 @@
     display: none;
   }
 }
+
+/* ===== v0.3: forms, images, shapes, redaction, crop, bookmarks, printing ===== */
+
+/* Form fields drawn over their widgets, in the familiar fillable-field blue. */
+.field-widget {
+  position: absolute;
+  margin: 0;
+  padding: 0 3px;
+  border: 1px solid rgba(70, 110, 220, 0.35);
+  border-radius: 2px;
+  background: rgba(205, 220, 255, 0.45);
+  color: #111318;
+  font-family: Helvetica, Arial, sans-serif;
+  pointer-events: auto;
+  outline: none;
+  resize: none;
+}
+
+.field-widget:hover {
+  border-color: rgba(70, 110, 220, 0.75);
+}
+
+.field-widget:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+.field-widget:disabled {
+  background: rgba(200, 200, 200, 0.25);
+  border-style: dashed;
+}
+
+.field-widget.is-toggle {
+  cursor: pointer;
+  padding: 0;
+}
+
+.field-widget.is-radio {
+  border-radius: 50%;
+}
+
+/* The page draws the check itself; the widget only shows that it can be clicked. */
+.field-widget.is-checked {
+  background: rgba(205, 220, 255, 0.15);
+}
+
+.field-widget.is-static {
+  background: rgba(200, 200, 200, 0.15);
+  border-style: dashed;
+}
+
+textarea.field-widget {
+  padding-top: 2px;
+  line-height: 1.15;
+}
+
+.annot-box.is-link {
+  outline: 1px dashed color-mix(in oklab, var(--info) 70%, transparent);
+  outline-offset: 0;
+  background: color-mix(in oklab, var(--info) 8%, transparent);
+}
+
+/* Images in the edit tool. */
+.image-box {
+  position: absolute;
+  outline: 1px dashed color-mix(in oklab, var(--accent) 45%, transparent);
+  cursor: pointer;
+}
+
+.image-box:hover {
+  outline: 1px solid var(--accent-line);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+}
+
+.image-box.is-selected {
+  outline: 2px solid var(--accent);
+  cursor: move;
+}
+
+.resize-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 3px;
+  background: var(--accent);
+  box-shadow: var(--sh-1);
+  cursor: nwse-resize;
+}
+
+/* Drag rectangles for the new tools. */
+.drag-rect.is-ellipse {
+  border-radius: 50%;
+}
+
+.drag-rect.is-redact {
+  border-color: #d9363e;
+  background: rgba(217, 54, 62, 0.15);
+}
+
+.drag-rect.is-crop {
+  border: 1px dashed var(--accent);
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(10, 12, 20, 0.35);
+}
+
+/* Redaction marks waiting to be applied: red outline over a hatch. */
+.redact-mark {
+  position: absolute;
+  border: 1.5px solid #d9363e;
+  background: repeating-linear-gradient(-45deg, rgba(217, 54, 62, 0.22) 0 6px, rgba(217, 54, 62, 0.08) 6px 12px);
+}
+
+.redact-remove {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #d9363e;
+  color: #ffffff;
+  font: 600 12px/18px var(--font-body);
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+}
+
+/* Shapes menu in the tool bar. */
+.shape-button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.shape-more {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 28px;
+  margin-left: -2px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--icon-subtlest);
+  cursor: pointer;
+}
+
+.shape-more:hover {
+  background: var(--bg-neutral-subtle-hovered);
+  color: var(--icon);
+}
+
+/* Plain inputs used in popovers and the inspector. */
+.text-input,
+.text-area {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+  box-shadow: var(--inset-lo);
+}
+
+.text-area {
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.text-input:focus,
+.text-area:focus {
+  border-color: var(--border-focused);
+  box-shadow: var(--focus-ring);
+}
+
+.swatch.is-none {
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1px), #d9363e calc(50% - 1px), #d9363e calc(50% + 1px), transparent calc(50% + 1px)),
+    #ffffff;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Bookmarks. */
+.bookmark-row {
+  align-items: center;
+  cursor: pointer;
+}
+
+.bookmark-row.is-selected {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.bookmark-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-page {
+  flex: none;
+  color: var(--text-subtlest);
+  font: 11px var(--font-code);
+}
+
+.bookmark-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border-focused);
+  border-radius: var(--r-xs);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+/* Printing: only the rendered pages. */
+#print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  #root,
+  .toast-stack,
+  .tooltip,
+  .blanket,
+  .menu {
+    display: none !important;
+  }
+
+  #print-root {
+    display: block;
+  }
+
+  #print-root img {
+    display: block;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  #print-root img:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}
+
+/* The page already draws a field's value; the input only shows its own text while typing. */
+input.field-widget:not(:focus),
+textarea.field-widget:not(:focus),
+select.field-widget:not(:focus) {
+  color: transparent;
+}
+
+select.field-widget option {
+  color: #111318;
+  background: #ffffff;
+}
+
+/* Tool bar items keep their size; the bar scrolls sideways when the window is narrow. */
+.toolbar > * {
+  flex-shrink: 0;
+}
+
+.toolbar > .spacer {
+  flex-shrink: 1;
+  min-width: 8px;
+}
+
+.page-nav {
+  white-space: nowrap;
+}

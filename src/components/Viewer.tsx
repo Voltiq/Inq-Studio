@@ -17,6 +17,8 @@ import {
   type TextLine,
 } from "../lib/api";
 import { pdfjs, type PDFDocumentProxy, type PageViewport, type SearchHit } from "../lib/pdf";
+import { AnnotsLayer, EXTRA_TOOLS, FieldsLayer, ImagesLayer, ShapesLayer, type ExtraActions, type ToolOptions } from "./PageExtras";
+import type { FieldInfo, ImageInfo, Rect } from "../lib/api";
 import { previewStack } from "../lib/fontPreview";
 import { hexToRgb, rgbToHex } from "../lib/format";
 import type { Tool, ZoomMode } from "../lib/types";
@@ -35,6 +37,7 @@ export type Selection =
       block: Block | null;
     }
   | { kind: "annot"; page: number; annot: AnnotInfo }
+  | { kind: "image"; page: number; image: ImageInfo }
   | null;
 
 export interface TextStyle {
@@ -43,7 +46,7 @@ export interface TextStyle {
   color: string;
 }
 
-export interface ViewerActions {
+export interface ViewerActions extends ExtraActions {
   editLines: (page: number, lines: number[], revision: number, edit: LineEdit) => Promise<boolean>;
   editBlock: (page: number, block: number, revision: number, text: string) => Promise<boolean>;
   addText: (page: number, spec: NewText) => Promise<boolean>;
@@ -59,8 +62,6 @@ const GAP = 16;
 const PAD = 24;
 const MAX_CANVAS_PIXELS = 16_000_000;
 const MARKUP: Tool[] = ["highlight", "underline", "strikeout"];
-/** Annotations that sit on text are managed from the Comments list, so they don't block text selection. */
-const TEXT_MARKUP = new Set(["Highlight", "Underline", "StrikeOut", "Squiggly", "Link", "Widget", "Popup"]);
 const SNAP_PX = 6;
 
 export function Viewer({
@@ -86,6 +87,10 @@ export function Viewer({
   hits,
   actions,
   busy,
+  fields,
+  redactions,
+  onRedactions,
+  toolOptions,
 }: {
   docId: number;
   revision: number;
@@ -109,6 +114,10 @@ export function Viewer({
   hits: (SearchHit & { current: boolean })[];
   actions: ViewerActions;
   busy: boolean;
+  fields: FieldInfo[];
+  redactions: Record<number, Rect[]>;
+  onRedactions: (page: number, rects: Rect[]) => void;
+  toolOptions: ToolOptions;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -294,6 +303,10 @@ export function Viewer({
                 author={author}
                 hits={hits.filter((h) => h.page === i)}
                 actions={actions}
+                fields={fields}
+                redactions={redactions[i] ?? []}
+                onRedactions={(r) => onRedactions(i, r)}
+                toolOptions={toolOptions}
               />
             )}
             <span className="page-number">{i + 1}</span>
@@ -385,6 +398,10 @@ function PageView({
   author,
   hits,
   actions,
+  fields,
+  redactions,
+  onRedactions,
+  toolOptions,
 }: {
   docId: number;
   revision: number;
@@ -403,6 +420,10 @@ function PageView({
   author: string;
   hits: (SearchHit & { current: boolean })[];
   actions: ViewerActions;
+  fields: FieldInfo[];
+  redactions: Rect[];
+  onRedactions: (rects: Rect[]) => void;
+  toolOptions: ToolOptions;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
@@ -484,7 +505,7 @@ function PageView({
   }, [docId, revision, index, needLines]);
 
   useEffect(() => {
-    if (tool !== "select") return;
+    if (tool !== "select" && tool !== "link") return;
     let cancelled = false;
     api
       .annots(docId, index)
@@ -772,7 +793,7 @@ function PageView({
     (tool === "text" || tool === "note" || tool === "ink" || tool === "rect" || MARKUP.includes(tool)) && "is-crosshair",
     (tool === "text" || MARKUP.includes(tool)) && "is-text",
   );
-  const showOverlay = tool !== "select" && tool !== "hand";
+  const showOverlay = tool !== "select" && tool !== "hand" && !EXTRA_TOOLS.includes(tool);
   const markPreview = mark ? markQuads(mark.a, mark.b) : [];
   const editingBlock = sel?.editing === "block" && sel.block && !stale ? sel.block : null;
   const editingLine = sel?.editing === "line" && !stale ? sel.lines[0] : null;
@@ -792,30 +813,23 @@ function PageView({
         <div key={i} className={cx("search-hit", h.current && "is-current")} style={{ left: h.r[0], top: h.r[1], width: h.r[2], height: h.r[3] }} />
       ))}
 
-      {tool === "select" && vp && (
-        <div className="overlay" style={{ pointerEvents: "none" }}>
-          {annots
-            .filter((a) => !TEXT_MARKUP.has(a.subtype))
-            .map((a) => {
-              const r = vp.convertToViewportRectangle(a.rect) as number[];
-              const selected = selection?.kind === "annot" && selection.page === index && selection.annot.index === a.index;
-              return (
-                <div
-                  key={a.index}
-                  className={cx("annot-box", selected && "is-selected")}
-                  style={{
-                    left: Math.min(r[0], r[2]),
-                    top: Math.min(r[1], r[3]),
-                    width: Math.abs(r[2] - r[0]),
-                    height: Math.abs(r[3] - r[1]),
-                    pointerEvents: "auto",
-                  }}
-                  data-tooltip={a.contents || a.subtype}
-                  onClick={() => onSelect({ kind: "annot", page: index, annot: a })}
-                />
-              );
-            })}
-        </div>
+      {(tool === "select" || tool === "link") && vp && (
+        <AnnotsLayer vp={vp} page={index} annots={annots} selection={selection} onSelect={onSelect} actions={actions} showLinks={tool === "link"} />
+      )}
+      {tool === "select" && vp && fields.length > 0 && <FieldsLayer vp={vp} page={index} fields={fields} actions={actions} />}
+      {vp && (
+        <ShapesLayer
+          vp={vp}
+          page={index}
+          tool={tool}
+          color={markColor}
+          width={inkWidth}
+          author={author}
+          options={toolOptions}
+          redactions={redactions}
+          onRedactions={onRedactions}
+          actions={actions}
+        />
       )}
 
       {showOverlay && vp && (
@@ -833,6 +847,9 @@ function PageView({
             setGuides({ x: null, y: null });
           }}
         >
+          {tool === "edit" && (
+            <ImagesLayer vp={vp} page={index} docId={docId} revision={revision} selection={selection} onSelect={onSelect} actions={actions} />
+          )}
           {tool === "edit" &&
             lines.map((l, i) => {
               const g = geo[i];

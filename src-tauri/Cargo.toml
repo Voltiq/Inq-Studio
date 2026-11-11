@@ -1,6 +1,6 @@
 [package]
 name = "inq-studio"
-version = "0.2.0"
+version = "0.3.0"
 description = "Inq Studio: a professional PDF viewer and editor that writes in the document's own fonts"
 license = "MIT"
 repository = "https://github.com/Voltiq/Inq-Studio"
@@ -27,6 +27,8 @@ ttf-parser = "0.25"
 base64 = "0.22"
 # Cutting system fonts down to the glyphs an edit needs before embedding them
 subsetter = "0.2"
+# Decoding and encoding images for insert, replace, extract and redaction
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [profile.release]
 lto = true
