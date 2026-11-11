@@ -1,3 +1,4 @@
+import { count, currentLanguage } from "./i18n";
 import type { FontSummary } from "./api";
 
 export function rgbToHex([r, g, b]: [number, number, number]): string {
@@ -57,5 +58,6 @@ export function fontLabel(f: Pick<FontSummary, "family" | "style">): string {
 }
 
 export function plural(n: number, word: string, many = `${word}s`): string {
+  if (currentLanguage() !== "en") return count(n, word, many);
   return `${n.toLocaleString()} ${n === 1 ? word : many}`;
 }

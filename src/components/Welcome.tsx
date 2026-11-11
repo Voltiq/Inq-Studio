@@ -3,14 +3,15 @@ import { Button, IconButton } from "./ui/Button";
 import { Shortcut } from "./ui/Feedback";
 import type { RecentFile } from "../lib/storage";
 import { MOD } from "../lib/utils";
+import { t } from "../lib/i18n";
 
-function ago(t: number): string {
-  const s = (Date.now() - t) / 1000;
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  if (s < 86400 * 7) return `${Math.floor(s / 86400)} d ago`;
-  return new Date(t).toLocaleDateString();
+function ago(time: number): string {
+  const s = (Date.now() - time) / 1000;
+  if (s < 60) return t("just now");
+  if (s < 3600) return t("{0} min ago", Math.floor(s / 60));
+  if (s < 86400) return t("{0} h ago", Math.floor(s / 3600));
+  if (s < 86400 * 7) return t("{0} d ago", Math.floor(s / 86400));
+  return new Date(time).toLocaleDateString();
 }
 
 export function Welcome({
@@ -30,8 +31,8 @@ export function Welcome({
         <div className="welcome-hero">
           <img src="/app-icon.svg" alt="" />
           <div>
-            <h1 className="welcome-title">Inq Studio</h1>
-            <p className="welcome-sub">Read, edit and organise PDFs — and write in the fonts they already use.</p>
+            <h1 className="welcome-title">{t("Inq Studio")}</h1>
+            <p className="welcome-sub">{t("Read, edit and organise PDFs — and write in the fonts they already use.")}</p>
           </div>
         </div>
 
@@ -40,17 +41,17 @@ export function Welcome({
             <FolderOpen size={20} />
           </span>
           <div className="dropzone-text">
-            <p className="dropzone-title">Open a PDF</p>
-            <p className="dropzone-sub">Or drop PDF files anywhere on this window.</p>
+            <p className="dropzone-title">{t("Open a PDF")}</p>
+            <p className="dropzone-sub">{t("Or drop PDF files anywhere on this window.")}</p>
           </div>
           <Button appearance="primary" iconBefore={FolderOpen} shortcut={`${MOD}+O`} onClick={onOpen}>
-            Open…
+            {t("Open…")}
           </Button>
         </div>
 
         {recent.length > 0 && (
           <section className="recent">
-            <span className="eyebrow">Recent</span>
+            <span className="eyebrow">{t("Recent")}</span>
             <div className="recent-list">
               {recent.map((r) => (
                 <div key={r.path} style={{ position: "relative" }}>
@@ -71,7 +72,7 @@ export function Welcome({
                   </button>
                   <IconButton
                     icon={X}
-                    label="Remove from list"
+                    label={t("Remove from list")}
                     spacing="compact"
                     style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)" }}
                     onClick={() => onForget(r.path)}
@@ -87,34 +88,33 @@ export function Welcome({
             <span className="icon-tile" aria-hidden="true">
               <Type size={16} />
             </span>
-            <p className="feature-title">Edit in the original font</p>
+            <p className="feature-title">{t("Edit in the original font")}</p>
             <p className="feature-body">
-              Text is re-encoded into the document’s own embedded fonts. Missing glyphs come from the same typeface on
-              your system.
+              {t("Text is re-encoded into the document’s own embedded fonts. Missing glyphs come from the same typeface on your system.")}
             </p>
           </div>
           <div className="feature">
             <span className="icon-tile" aria-hidden="true">
               <Highlighter size={16} />
             </span>
-            <p className="feature-title">Mark up</p>
-            <p className="feature-body">Highlights, underlines, notes, drawings and shapes that every reader shows.</p>
+            <p className="feature-title">{t("Mark up")}</p>
+            <p className="feature-body">{t("Highlights, underlines, notes, drawings and shapes that every reader shows.")}</p>
           </div>
           <div className="feature">
             <span className="icon-tile" aria-hidden="true">
               <LayoutGrid size={16} />
             </span>
-            <p className="feature-title">Organise pages</p>
-            <p className="feature-body">Reorder by dragging, rotate, duplicate, insert, merge and extract pages.</p>
+            <p className="feature-title">{t("Organise pages")}</p>
+            <p className="feature-body">{t("Reorder by dragging, rotate, duplicate, insert, merge and extract pages.")}</p>
           </div>
         </div>
 
         <div className="shortcuts">
           <span>
-            <Shortcut keys="E" /> edit text
+            <Shortcut keys="E" /> {t("edit text")}
           </span>
           <span>
-            <Shortcut keys="T" /> add text
+            <Shortcut keys="T" /> {t("add text")}
           </span>
           <span>
             <Shortcut keys="M" /> highlight

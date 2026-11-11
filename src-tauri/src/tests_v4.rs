@@ -512,7 +512,7 @@ fn leaves_room_for_a_signature_and_fills_it() {
     assert_eq!(s.rect, Some([72.0, 72.0, 272.0, 132.0]));
     assert!(s.covers_whole);
     // Everything but the value was handed over for signing, and the value sits in the gap.
-    assert_eq!(seen.len() + 2 * 16384 + 2, signed.len());
+    assert_eq!(seen.len() + 2 * sign::CONTENTS_BYTES + 2, signed.len());
     let hex = String::from_utf8_lossy(&signed).to_string();
     assert!(hex.contains("<3003020105000000"));
     assert!(store::is_signed(&read));
@@ -590,5 +590,29 @@ fn signs_and_validates_with_a_digital_id() {
     tampered[120] ^= 0x01;
     let list = sign::list(&read, Some(&tampered));
     assert_eq!(list[0].intact, Some(false));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Asks a public timestamp authority for a timestamp. Needs the network, so it only runs when asked for:
+/// `cargo test timestamps_a_signature -- --ignored`
+#[cfg(windows)]
+#[test]
+#[ignore]
+fn timestamps_a_signature() {
+    let dir = temp_dir("tsa");
+    let pfx = dir.join("id.pfx").to_string_lossy().to_string();
+    sign::create_identity(&sign::NewIdentity { name: "Inq TSA Test".into(), email: String::new(), organisation: String::new(), country: String::new(), years: 1, path: pfx.clone(), password: "test".into() }).unwrap();
+    let id = sign::IdentityRef::File { path: pfx, password: "test".into() };
+    let doc = doc_with(&[&["Timestamp me"]]);
+    let signed = sign::sign_with(&id, |who, signer| {
+        let mut out = doc.clone();
+        sign::add_signature(&mut out, &sign::SignOptions::default(), &who.name, &crate::annots::pdf_date())?;
+        let bytes = store::full_bytes(&mut out, &Protection::None, &None, false)?.0;
+        sign::finish(bytes, |a, b| sign::timestamp(signer(a, b)?, "http://timestamp.digicert.com"))
+    })
+    .unwrap();
+    let list = sign::list(&Document::load_mem(&signed).unwrap(), Some(&signed));
+    assert_eq!(list[0].intact, Some(true), "{}", list[0].problem);
+    assert!(list[0].timestamped);
     let _ = std::fs::remove_dir_all(dir);
 }

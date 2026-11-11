@@ -22,6 +22,14 @@ similar. Inq Studio rewrites the page's own content stream:
 
 The result stays real text: selectable, searchable, copyable, and identical in every PDF reader.
 
+## Install
+
+Download the installer from the [latest release](https://github.com/Voltiq/Inq-Studio/releases/latest) and
+run it. It installs for the current user, needs no administrator rights, and keeps itself up to date. The
+installer is not code-signed yet: if SmartScreen warns, choose *More info › Run anyway*.
+
+The [user guide](docs/GUIDE.md) ([Deutsch](docs/ANLEITUNG.md)) explains every tool.
+
 ## Develop
 
 ```bash
@@ -39,11 +47,27 @@ Run the engine against a real file without printing its text:
 cd src-tauri && INQ_TEST_PDF="C:/path/file.pdf" cargo test real_file -- --ignored --nocapture
 ```
 
+Work on the interface in a browser, against a stand-in for the engine (http://localhost:1420):
+
+```bash
+npm run dev
+```
+
+Interface tests:
+
+```bash
+npm test
+```
+
 Build an installer:
 
 ```bash
 npm run tauri build
 ```
+
+A release: bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, add
+the notes to `CHANGELOG.md`, then push a tag `vX.Y.Z`. The release workflow builds the installer, signs the
+update files with `TAURI_SIGNING_PRIVATE_KEY` (a repository secret) and publishes the release.
 
 ## Layout
 
@@ -63,6 +87,10 @@ npm run tauri build
 | `src-tauri/src/pdfa.rs` | PDF/A checks and conversion, sRGB output intent, XMP metadata |
 | `src-tauri/src/optimize.rs`, `compare.rs`, `tags.rs` | Optimiser, document comparison and text export, structure tree |
 | `src-tauri/src/pro.rs` | Commands of the v0.4 tools |
+| `src-tauri/src/log.rs` | Log file and crash reports |
+| `src/lib/i18n.ts`, `src/lib/de.ts` | Translation: English keys, the German table |
+| `src/lib/mock.ts` | Stand-in for the engine, for the browser preview and interface tests |
+| `src/lib/updates.ts` | Update check and install |
 | `src/components/Viewer.tsx` | pdf.js rendering, overlays, inline editor |
 | `src/components/ProDialogs.tsx`, `Compare.tsx` | Dialogs of the v0.4 tools, side-by-side comparison |
 | `src/styles/tokens.css` | Graphiq design tokens, shared with the other Studio apps |

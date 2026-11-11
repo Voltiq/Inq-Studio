@@ -7,6 +7,7 @@ import { Segmented, Select, TextField, Toggle } from "./ui/Field";
 import { api, type Bookmark, type FontCatalog, type FontSummary, type LabelRange, type Mark, type MarkStyle } from "../lib/api";
 import { hexToRgb } from "../lib/format";
 import { parseChoice, useFontOptions } from "./Inspector";
+import { t } from "../lib/i18n";
 
 // ---------------------------------------------------------------------------
 // Page scope
@@ -43,17 +44,17 @@ export function ScopePicker({
   return (
     <div className="row" style={{ alignItems: "flex-end" }}>
       <Select<Scope>
-        label="Pages"
+        label={t("Pages")}
         value={scope}
         onChange={onScope}
         options={[
-          { value: "all", label: "All pages" },
-          { value: "current", label: "Current page" },
-          { value: "selected", label: selected ? `Selected pages (${selected})` : "Selected pages (none)" },
-          { value: "range", label: "Page range…" },
+          { value: "all", label: t("All pages") },
+          { value: "current", label: t("Current page") },
+          { value: "selected", label: selected ? t("Selected pages ({0})", selected) : t("Selected pages (none)") },
+          { value: "range", label: t("Page range…") },
         ]}
       />
-      {scope === "range" && <TextField label="Range" value={range} placeholder="1-3, 7, 10-" onChange={(e) => onRange(e.target.value)} />}
+      {scope === "range" && <TextField label={t("Range")} value={range} placeholder="1-3, 7, 10-" onChange={(e) => onRange(e.target.value)} />}
     </div>
   );
 }
@@ -86,17 +87,17 @@ function StyleFields({
   const options = useFontOptions(fonts, catalog);
   return (
     <>
-      <Select label="Font" value={style.font} options={options.length ? options : [{ value: style.font, label: "Helvetica" }]} onChange={(font) => onStyle({ ...style, font })} />
+      <Select label={t("Font")} value={style.font} options={options.length ? options : [{ value: style.font, label: "Helvetica" }]} onChange={(font) => onStyle({ ...style, font })} />
       <div className="row">
-        <TextField label="Size (pt)" value={style.size} mono onChange={(e) => onStyle({ ...style, size: e.target.value })} />
+        <TextField label={t("Size (pt)")} value={style.size} mono onChange={(e) => onStyle({ ...style, size: e.target.value })} />
         <label className="color-field">
-          <span className="field-label">Colour</span>
+          <span className="field-label">{t("Colour")}</span>
           <input type="color" className="color-input" value={style.color} onChange={(e) => onStyle({ ...style, color: e.target.value })} />
         </label>
       </div>
       {showOpacity && (
         <label className="field">
-          <span className="field-label">Opacity · {Math.round(style.opacity * 100)}%</span>
+          <span className="field-label">{t("Opacity ·")}{" "}{Math.round(style.opacity * 100)}%</span>
           <input type="range" min={5} max={100} step={5} value={Math.round(style.opacity * 100)} onChange={(e) => onStyle({ ...style, opacity: Number(e.target.value) / 100 })} />
         </label>
       )}
@@ -143,7 +144,7 @@ export function PageMarksDialog({
   const { scope, setScope, range, setRange, list } = useScope(pages, current, selected);
   const [wm, setWm] = useState({ text: "CONFIDENTIAL", angle: "45", behind: false });
   const [wmStyle, setWmStyle] = useState({ font: "std:Helvetica-Bold", size: "64", color: "#c62828", opacity: 0.25 });
-  const [hf, setHf] = useState({ h0: "", h1: "", h2: "{date}", f0: "{file}", f1: "", f2: "Page {page} of {pages}", margin: "28", first: "1" });
+  const [hf, setHf] = useState({ h0: "", h1: "", h2: "{date}", f0: "{file}", f1: "", f2: t("Page {page} of {pages}"), margin: "28", first: "1" });
   const [hfStyle, setHfStyle] = useState({ font: "std:Helvetica", size: "9", color: "#333333", opacity: 1 });
   const [bates, setBates] = useState({ prefix: "", suffix: "", start: "1", digits: "6", position: "bottom-right", margin: "20" });
   const [batesStyle, setBatesStyle] = useState({ font: "std:Helvetica-Bold", size: "9", color: "#000000", opacity: 1 });
@@ -184,7 +185,7 @@ export function PageMarksDialog({
 
   return (
     <Modal
-      title="Page marks"
+      title={t("Page marks")}
       onClose={onClose}
       width="large"
       closeOnBlanket={false}
@@ -192,10 +193,10 @@ export function PageMarksDialog({
         tab === "labels" ? undefined : (
           <>
             <Button appearance="subtle" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button appearance="primary" loading={busy} disabled={!list.length || (tab === "watermark" && !wm.text.trim())} onClick={apply}>
-              Add to {list.length === pages ? "all pages" : `${list.length} page${list.length === 1 ? "" : "s"}`}
+              {t("Add to")}{" "}{list.length === pages ? t("all pages") : t("{0} page{1}", list.length, list.length === 1 ? "" : "s")}
             </Button>
           </>
         )
@@ -203,14 +204,14 @@ export function PageMarksDialog({
     >
       <div style={{ display: "grid", gap: 16 }}>
         <Segmented<MarksTab>
-          label="Kind of mark"
+          label={t("Kind of mark")}
           value={tab}
           onChange={setTab}
           options={[
-            { value: "watermark", label: "Watermark" },
-            { value: "header", label: "Header & footer" },
-            { value: "bates", label: "Bates numbers" },
-            { value: "labels", label: "Page labels" },
+            { value: "watermark", label: t("Watermark") },
+            { value: "header", label: t("Header & footer") },
+            { value: "bates", label: t("Bates numbers") },
+            { value: "labels", label: t("Page labels") },
           ]}
         />
         {tab === "labels" ? (
@@ -220,12 +221,12 @@ export function PageMarksDialog({
             <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
             {tab === "watermark" && (
               <>
-                <TextField label="Text" value={wm.text} onChange={(e) => setWm({ ...wm, text: e.target.value })} />
+                <TextField label={t("Text")} value={wm.text} onChange={(e) => setWm({ ...wm, text: e.target.value })} />
                 <StyleFields style={wmStyle} onStyle={setWmStyle} fonts={fonts} catalog={catalog} showOpacity />
                 <div className="row">
-                  <TextField label="Angle (°)" value={wm.angle} mono onChange={(e) => setWm({ ...wm, angle: e.target.value })} />
+                  <TextField label={t("Angle (°)")} value={wm.angle} mono onChange={(e) => setWm({ ...wm, angle: e.target.value })} />
                   <div className="field" style={{ justifyContent: "flex-end" }}>
-                    <Toggle label="Behind the page content" checked={wm.behind} onChange={(behind) => setWm({ ...wm, behind })} />
+                    <Toggle label={t("Behind the page content")} checked={wm.behind} onChange={(behind) => setWm({ ...wm, behind })} />
                   </div>
                 </div>
               </>
@@ -233,41 +234,41 @@ export function PageMarksDialog({
             {tab === "header" && (
               <>
                 <div className="grid-3">
-                  <TextField label="Header left" value={hf.h0} onChange={(e) => setHf({ ...hf, h0: e.target.value })} />
-                  <TextField label="Header centre" value={hf.h1} onChange={(e) => setHf({ ...hf, h1: e.target.value })} />
-                  <TextField label="Header right" value={hf.h2} onChange={(e) => setHf({ ...hf, h2: e.target.value })} />
-                  <TextField label="Footer left" value={hf.f0} onChange={(e) => setHf({ ...hf, f0: e.target.value })} />
-                  <TextField label="Footer centre" value={hf.f1} onChange={(e) => setHf({ ...hf, f1: e.target.value })} />
-                  <TextField label="Footer right" value={hf.f2} onChange={(e) => setHf({ ...hf, f2: e.target.value })} />
+                  <TextField label={t("Header left")} value={hf.h0} onChange={(e) => setHf({ ...hf, h0: e.target.value })} />
+                  <TextField label={t("Header centre")} value={hf.h1} onChange={(e) => setHf({ ...hf, h1: e.target.value })} />
+                  <TextField label={t("Header right")} value={hf.h2} onChange={(e) => setHf({ ...hf, h2: e.target.value })} />
+                  <TextField label={t("Footer left")} value={hf.f0} onChange={(e) => setHf({ ...hf, f0: e.target.value })} />
+                  <TextField label={t("Footer centre")} value={hf.f1} onChange={(e) => setHf({ ...hf, f1: e.target.value })} />
+                  <TextField label={t("Footer right")} value={hf.f2} onChange={(e) => setHf({ ...hf, f2: e.target.value })} />
                 </div>
                 <p className="is-muted" style={{ fontSize: 12 }}>
-                  Placeholders: <code>{"{page}"}</code> page number, <code>{"{pages}"}</code> page count, <code>{"{date}"}</code> today,{" "}
-                  <code>{"{file}"}</code> file name.
+                  {t("Placeholders:")}{" "}<code>{"{page}"}</code> {t("page number,")}{" "}<code>{"{pages}"}</code> {t("page count,")}{" "}<code>{"{date}"}</code> {t("today,")}{" "}
+                  <code>{"{file}"}</code> {t("file name.")}
                 </p>
                 <StyleFields style={hfStyle} onStyle={setHfStyle} fonts={fonts} catalog={catalog} />
                 <div className="row">
-                  <TextField label="Margin (pt)" value={hf.margin} mono onChange={(e) => setHf({ ...hf, margin: e.target.value })} />
-                  <TextField label="First page number" value={hf.first} mono onChange={(e) => setHf({ ...hf, first: e.target.value })} />
+                  <TextField label={t("Margin (pt)")} value={hf.margin} mono onChange={(e) => setHf({ ...hf, margin: e.target.value })} />
+                  <TextField label={t("First page number")} value={hf.first} mono onChange={(e) => setHf({ ...hf, first: e.target.value })} />
                 </div>
               </>
             )}
             {tab === "bates" && (
               <>
                 <div className="grid-3">
-                  <TextField label="Prefix" value={bates.prefix} placeholder="ACME-" onChange={(e) => setBates({ ...bates, prefix: e.target.value })} />
-                  <TextField label="Start at" value={bates.start} mono onChange={(e) => setBates({ ...bates, start: e.target.value })} />
-                  <TextField label="Digits" value={bates.digits} mono onChange={(e) => setBates({ ...bates, digits: e.target.value })} />
-                  <TextField label="Suffix" value={bates.suffix} onChange={(e) => setBates({ ...bates, suffix: e.target.value })} />
+                  <TextField label={t("Prefix")} value={bates.prefix} placeholder={t("ACME-")} onChange={(e) => setBates({ ...bates, prefix: e.target.value })} />
+                  <TextField label={t("Start at")} value={bates.start} mono onChange={(e) => setBates({ ...bates, start: e.target.value })} />
+                  <TextField label={t("Digits")} value={bates.digits} mono onChange={(e) => setBates({ ...bates, digits: e.target.value })} />
+                  <TextField label={t("Suffix")} value={bates.suffix} onChange={(e) => setBates({ ...bates, suffix: e.target.value })} />
                   <Select
-                    label="Position"
+                    label={t("Position")}
                     value={bates.position}
                     onChange={(position) => setBates({ ...bates, position })}
                     options={["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"].map((v) => ({ value: v, label: v.replace("-", " ") }))}
                   />
-                  <TextField label="Margin (pt)" value={bates.margin} mono onChange={(e) => setBates({ ...bates, margin: e.target.value })} />
+                  <TextField label={t("Margin (pt)")} value={bates.margin} mono onChange={(e) => setBates({ ...bates, margin: e.target.value })} />
                 </div>
                 <p className="is-muted" style={{ fontSize: 12 }}>
-                  First number: <code>{batesPreview}</code>
+                  {t("First number:")}{" "}<code>{batesPreview}</code>
                 </p>
                 <StyleFields style={batesStyle} onStyle={setBatesStyle} fonts={fonts} catalog={catalog} />
               </>
@@ -281,11 +282,11 @@ export function PageMarksDialog({
 
 const LABEL_STYLES: { value: LabelRange["style"]; label: string }[] = [
   { value: "D", label: "1, 2, 3" },
-  { value: "r", label: "i, ii, iii" },
-  { value: "R", label: "I, II, III" },
+  { value: "r", label: t("i, ii, iii") },
+  { value: "R", label: t("I, II, III") },
   { value: "a", label: "a, b, c" },
   { value: "A", label: "A, B, C" },
-  { value: "", label: "Prefix only" },
+  { value: "", label: t("Prefix only") },
 ];
 
 function LabelsEditor({ docId, revision, pages, onSave }: { docId: number; revision: number; pages: number; onSave: (r: LabelRange[]) => Promise<boolean> }) {
@@ -304,30 +305,30 @@ function LabelsEditor({ docId, revision, pages, onSave }: { docId: number; revis
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <p className="is-muted" style={{ fontSize: 12 }}>
-        Page labels are the page numbers readers show, like i–iv for a preface and 1, 2, 3 after it. They do not change what is printed on the pages.
+        {t("Page labels are the page numbers readers show, like i–iv for a preface and 1, 2, 3 after it. They do not change what is printed on the pages.")}
       </p>
-      {rows.length === 0 && <p>This document uses plain page numbers.</p>}
+      {rows.length === 0 && <p>{t("This document uses plain page numbers.")}</p>}
       {rows.map((r, i) => (
         <div key={i} className="row">
-          <TextField label="From page" value={r.start} mono onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, start: e.target.value } : x)))} />
-          <Select label="Style" value={r.style} options={LABEL_STYLES} onChange={(style) => setRows(rows.map((x, k) => (k === i ? { ...x, style } : x)))} />
-          <TextField label="Prefix" value={r.prefix} onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, prefix: e.target.value } : x)))} />
-          <TextField label="Count from" value={r.first} mono onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, first: e.target.value } : x)))} />
-          <IconButton icon={Trash2} label="Remove this range" onClick={() => setRows(rows.filter((_, k) => k !== i))} />
+          <TextField label={t("From page")} value={r.start} mono onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, start: e.target.value } : x)))} />
+          <Select label={t("Style")} value={r.style} options={LABEL_STYLES} onChange={(style) => setRows(rows.map((x, k) => (k === i ? { ...x, style } : x)))} />
+          <TextField label={t("Prefix")} value={r.prefix} onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, prefix: e.target.value } : x)))} />
+          <TextField label={t("Count from")} value={r.first} mono onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, first: e.target.value } : x)))} />
+          <IconButton icon={Trash2} label={t("Remove this range")} onClick={() => setRows(rows.filter((_, k) => k !== i))} />
         </div>
       ))}
       <div className="inspector-actions" style={{ marginTop: 0 }}>
         <Button spacing="compact" iconBefore={Plus} onClick={() => setRows([...rows, { start: String(rows.length ? pages : 1), style: "D", prefix: "", first: "1" }])}>
-          Add range
+          {t("Add range")}
         </Button>
         <span className="spacer" />
         <Button appearance="primary" spacing="compact" onClick={() => onSave(ranges)}>
-          Save labels
+          {t("Save labels")}
         </Button>
       </div>
       {preview.length > 0 && (
         <p className="is-muted" style={{ fontSize: 12 }}>
-          Now: {preview.slice(0, 14).join(", ")}
+          {t("Now:")}{" "}{preview.slice(0, 14).join(", ")}
           {preview.length > 14 ? " …" : ""}
         </p>
       )}
@@ -369,32 +370,32 @@ export function ResizeDialog({
   if (landscape) [w, h] = [h, w];
   return (
     <Modal
-      title="Resize pages"
+      title={t("Resize pages")}
       onClose={onClose}
       width="medium"
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button appearance="primary" disabled={!list.length || !(w > 0 && h > 0)} onClick={async () => (await onApply(list, w, h)) && onClose()}>
-            Resize {list.length === pages ? "all pages" : `${list.length} page${list.length === 1 ? "" : "s"}`}
+            {t("Resize")}{" "}{list.length === pages ? t("all pages") : t("{0} page{1}", list.length, list.length === 1 ? "" : "s")}
           </Button>
         </>
       }
     >
       <div style={{ display: "grid", gap: 16 }}>
         <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
-        <Select label="Paper size" value={size} onChange={setSize} options={[...Object.keys(SIZES).map((k) => ({ value: k, label: k })), { value: "custom", label: "Custom…" }]} />
+        <Select label={t("Paper size")} value={size} onChange={setSize} options={[...Object.keys(SIZES).map((k) => ({ value: k, label: k })), { value: "custom", label: t("Custom…") }]} />
         {size === "custom" && (
           <div className="row">
-            <TextField label="Width (mm)" value={custom.w} mono onChange={(e) => setCustom({ ...custom, w: e.target.value })} />
-            <TextField label="Height (mm)" value={custom.h} mono onChange={(e) => setCustom({ ...custom, h: e.target.value })} />
+            <TextField label={t("Width (mm)")} value={custom.w} mono onChange={(e) => setCustom({ ...custom, w: e.target.value })} />
+            <TextField label={t("Height (mm)")} value={custom.h} mono onChange={(e) => setCustom({ ...custom, h: e.target.value })} />
           </div>
         )}
-        <Toggle label="Landscape" checked={landscape} onChange={setLandscape} />
+        <Toggle label={t("Landscape")} checked={landscape} onChange={setLandscape} />
         <p className="is-muted" style={{ fontSize: 12 }}>
-          The content is scaled to fit and centred; annotations move with it.
+          {t("The content is scaled to fit and centred; annotations move with it.")}
         </p>
       </div>
     </Modal>
@@ -446,13 +447,13 @@ export function SplitDialog({
   }, [mode, every, ranges, selected, outline, pages]);
   return (
     <Modal
-      title="Split document"
+      title={t("Split document")}
       onClose={onClose}
       width="medium"
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button
             appearance="primary"
@@ -463,27 +464,27 @@ export function SplitDialog({
               if (typeof folder === "string" && (await onSplit(parts, folder))) onClose();
             }}
           >
-            Save {parts.length} file{parts.length === 1 ? "" : "s"}…
+            {t("Save")}{" "}{parts.length} file{parts.length === 1 ? "" : "s"}…
           </Button>
         </>
       }
     >
       <div style={{ display: "grid", gap: 16 }}>
         <Select<SplitMode>
-          label="Split"
+          label={t("Split")}
           value={mode}
           onChange={setMode}
           options={[
-            { value: "every", label: "Every few pages" },
-            { value: "selected", label: "Before each selected page" },
-            { value: "bookmarks", label: "At top-level bookmarks" },
-            { value: "ranges", label: "Into page ranges" },
+            { value: "every", label: t("Every few pages") },
+            { value: "selected", label: t("Before each selected page") },
+            { value: "bookmarks", label: t("At top-level bookmarks") },
+            { value: "ranges", label: t("Into page ranges") },
           ]}
         />
-        {mode === "every" && <TextField label="Pages per file" value={every} mono onChange={(e) => setEvery(e.target.value)} />}
-        {mode === "selected" && <p className="is-muted">{selected.length ? `${selected.length} pages selected in the sidebar.` : "Select pages in the sidebar first."}</p>}
-        {mode === "bookmarks" && <p className="is-muted">{outline.length ? `${outline.length} top-level bookmarks.` : "This document has no bookmarks."}</p>}
-        {mode === "ranges" && <TextField label="Ranges, one file each" value={ranges} placeholder="1-3; 4-10; 11-" onChange={(e) => setRanges(e.target.value)} />}
+        {mode === "every" && <TextField label={t("Pages per file")} value={every} mono onChange={(e) => setEvery(e.target.value)} />}
+        {mode === "selected" && <p className="is-muted">{selected.length ? t("{0} pages selected in the sidebar.", selected.length) : t("Select pages in the sidebar first.")}</p>}
+        {mode === "bookmarks" && <p className="is-muted">{outline.length ? t("{0} top-level bookmarks.", outline.length) : t("This document has no bookmarks.")}</p>}
+        {mode === "ranges" && <TextField label={t("Ranges, one file each")} value={ranges} placeholder="1-3; 4-10; 11-" onChange={(e) => setRanges(e.target.value)} />}
         <p className="is-muted" style={{ fontSize: 12 }}>
           {parts.length} file{parts.length === 1 ? "" : "s"}:{" "}
           {parts

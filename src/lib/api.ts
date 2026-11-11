@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { te } from "./i18n";
 
 // Shapes returned by the Rust side (src-tauri/src/store.rs).
 
@@ -504,12 +505,19 @@ export interface SignOptions {
   page: number;
   rect: Rect | null;
   field: string | null;
+  timestampUrl: string;
 }
 
 /** Header values travel percent-encoded. */
 const h = (v: string | number) => encodeURIComponent(String(v));
 
 export const api = {
+  logInfo: () => invoke<{ folder: string; file: string; newCrashes: string[] }>("log_info"),
+  /** Notes something in the log file; never throws. */
+  log: (level: "info" | "warn" | "error", message: string) => {
+    invoke("log_write", { level, message }).catch(() => {});
+  },
+  crashesSeen: () => invoke<void>("crashes_seen"),
   renderInfo: (id: number) => invoke<{ generation: number; length: number }>("doc_render_info", { id }),
   range: (id: number, generation: number, start: number, end: number) => invoke<ArrayBuffer>("doc_range", { id, generation, start, end }),
   protect: (id: number, request: ProtectRequest | null) => invoke<DocInfo>("doc_protect", { id, request }),
@@ -591,7 +599,7 @@ export const api = {
 
 /** Error text from a rejected command. */
 export function errorText(e: unknown): string {
-  if (typeof e === "string") return e;
-  if (e instanceof Error) return e.message;
-  return String(e);
+  const text = typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+  // The engine answers in English; known sentences are shown translated.
+  return text === "PASSWORD_REQUIRED" ? text : te(text);
 }

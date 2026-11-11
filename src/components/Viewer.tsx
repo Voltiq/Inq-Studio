@@ -25,6 +25,7 @@ import { previewStack } from "../lib/fontPreview";
 import { hexToRgb, rgbToHex } from "../lib/format";
 import type { Tool, ZoomMode } from "../lib/types";
 import { cx } from "../lib/utils";
+import { t } from "../lib/i18n";
 
 export type Selection =
   | {
@@ -218,7 +219,7 @@ export function Viewer({
           return next;
         });
       },
-      { root, rootMargin: "800px 0px" },
+      { root, rootMargin: t("800px 0px") },
     );
     pageRefs.current.forEach((el) => el && io.observe(el));
     return () => io.disconnect();
@@ -350,11 +351,11 @@ function fontStackForChoice(docId: number, choice: FontChoice, fonts: FontSummar
     const f = fonts?.find((x) => x.key === choice.key);
     return f ? previewStack(docId, f) : Promise.resolve("sans-serif");
   }
-  if (choice.kind === "system") return Promise.resolve(`"${choice.family}", sans-serif`);
+  if (choice.kind === "system") return Promise.resolve(t("\"{0}\", sans-serif", choice.family));
   const n = choice.name;
-  if (n.startsWith("Times")) return Promise.resolve(`"Times New Roman", Times, serif`);
-  if (n.startsWith("Courier")) return Promise.resolve(`"Courier New", Courier, monospace`);
-  return Promise.resolve(`Helvetica, Arial, sans-serif`);
+  if (n.startsWith("Times")) return Promise.resolve(t("\"Times New Roman\", Times, serif"));
+  if (n.startsWith("Courier")) return Promise.resolve(t("\"Courier New\", Courier, monospace"));
+  return Promise.resolve(t("Helvetica, Arial, sans-serif"));
 }
 
 interface Geometry {
@@ -833,7 +834,7 @@ function PageView({
 
   return (
     <>
-      <canvas ref={canvasRef} className="page-canvas" aria-label={`Page ${index + 1}`} />
+      <canvas ref={canvasRef} className="page-canvas" aria-label={t("Page {0}", index + 1)} />
       {vp &&
         order?.map((o) => {
           const r = vp.convertToViewportRectangle(o.bbox) as number[];
@@ -902,7 +903,7 @@ function PageView({
               const isSel = selectedIds.has(l.id) && !stale;
               const moving = isSel && move ? move : null;
               const inBlock = sel && !stale && sel.block && sel.lines.length === 1 && sel.block.lines.length > 1 && sel.block.lines.includes(l.id) && !isSel;
-              const styles = l.spans.length > 1 ? ` · ${l.spans.length} styles` : "";
+              const styles = l.spans.length > 1 ? t(" · {0} styles", l.spans.length) : "";
               return (
                 <div
                   key={`${text?.revision}-${l.id}`}
@@ -922,7 +923,7 @@ function PageView({
                     height: g.height,
                     transform: g.angle ? `rotate(${g.angle}deg)` : undefined,
                   }}
-                  data-tooltip={l.note ?? `${l.family}${l.bold ? " Bold" : ""}${l.italic ? " Italic" : ""} · ${l.em.toFixed(1)} pt${styles}`}
+                  data-tooltip={l.note ?? t("{0}{1}{2} · {3} pt{4}", l.family, l.bold ? " Bold" : "", l.italic ? " Italic" : "", l.em.toFixed(1), styles)}
                   onPointerDown={(e) => {
                     if (e.button !== 0 || !text) return;
                     e.stopPropagation();
@@ -1089,7 +1090,7 @@ function PageView({
 // ---------------------------------------------------------------------------
 
 function useFontStack(docId: number, fontKey: string, fonts: FontSummary[] | null, family: string): string {
-  const [stack, setStack] = useState(`"${family}", sans-serif`);
+  const [stack, setStack] = useState(t("\"{0}\", sans-serif", family));
   useEffect(() => {
     const f = fonts?.find((x) => x.key === fontKey);
     if (!f) return;
@@ -1139,7 +1140,7 @@ function InlineEditor({
         className="inline-editor"
         value={value}
         spellCheck={false}
-        aria-label="Edit line"
+        aria-label={t("Edit line")}
         style={{
           left: g.left,
           top: g.top,
@@ -1166,8 +1167,8 @@ function InlineEditor({
         onPointerDown={(e) => e.stopPropagation()}
       />
       <div className="inline-hint" style={{ left: g.left, top: g.top + g.height + 10 }}>
-        <Kbd>Enter</Kbd> save in {line.family || line.fontName}
-        {line.spans.length > 1 ? " (styles kept)" : ""} <Kbd>Esc</Kbd> cancel
+        <Kbd>{t("Enter")}</Kbd> {t("save in")}{" "}{line.family || line.fontName}
+        {line.spans.length > 1 ? t(" (styles kept)") : ""} <Kbd>{t("Esc")}</Kbd> cancel
       </div>
     </>
   );
@@ -1214,7 +1215,7 @@ function BlockEditor({
         className="inline-editor block-editor"
         value={value}
         spellCheck={false}
-        aria-label="Edit paragraph"
+        aria-label={t("Edit paragraph")}
         style={{
           left: g.left,
           top: g.top,
@@ -1245,7 +1246,7 @@ function BlockEditor({
         onPointerDown={(e) => e.stopPropagation()}
       />
       <div className="inline-hint" style={{ left: g.left, top: g.top - 32 }}>
-        Paragraph · {block.lines.length} lines · {block.align} <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> reflow and save <Kbd>Esc</Kbd> cancel
+        {t("Paragraph ·")}{" "}{block.lines.length} {t("lines ·")}{" "}{block.align} <Kbd>{t("Ctrl")}</Kbd>+<Kbd>{t("Enter")}</Kbd> {t("reflow and save")}{" "}<Kbd>{t("Esc")}</Kbd> cancel
       </div>
     </>
   );
@@ -1299,8 +1300,8 @@ function NewTextEditor({
         value={value}
         rows={1}
         spellCheck={false}
-        placeholder="Type…"
-        aria-label="New text"
+        placeholder={t("Type…")}
+        aria-label={t("New text")}
         style={{
           left: at.x,
           top: at.y,
@@ -1325,7 +1326,7 @@ function NewTextEditor({
         onPointerDown={(e) => e.stopPropagation()}
       />
       <div className="inline-hint" style={{ left: at.x, top: at.y - 30 }}>
-        <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> place <Kbd>Esc</Kbd> cancel
+        <Kbd>{t("Ctrl")}</Kbd>+<Kbd>{t("Enter")}</Kbd> place <Kbd>{t("Esc")}</Kbd> cancel
       </div>
     </>
   );
@@ -1353,7 +1354,7 @@ function NotePopover({
       <textarea
         ref={ref}
         value={value}
-        placeholder="Write a note…"
+        placeholder={t("Write a note…")}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
           e.stopPropagation();
@@ -1363,10 +1364,10 @@ function NotePopover({
       />
       <footer>
         <Button appearance="subtle" spacing="compact" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button appearance="primary" spacing="compact" onClick={() => onSave(value)}>
-          Add note
+          {t("Add note")}
         </Button>
       </footer>
     </div>

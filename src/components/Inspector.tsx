@@ -11,6 +11,7 @@ import type { Settings } from "../lib/storage";
 import type { Tool } from "../lib/types";
 import type { Selection, TextStyle } from "./Viewer";
 import { cx } from "../lib/utils";
+import { t } from "../lib/i18n";
 
 const MARK_SWATCHES = ["#ffd43b", "#8ce99a", "#74c0fc", "#f783ac", "#ffa94d", "#e5484d", "#6457f0", "#111318"];
 
@@ -125,7 +126,7 @@ export function Inspector({
     body = <DocInspector info={info} pageSize={pageSize} units={settings.units} onSave={onSaveMeta} />;
   }
   return (
-    <aside className="panel side is-inspector" aria-label="Inspector">
+    <aside className="panel side is-inspector" aria-label={t("Inspector")}>
       <div className="side-body" style={{ paddingTop: "var(--space-200)" }}>
         {body}
       </div>
@@ -139,10 +140,10 @@ export function useFontOptions(fonts: FontSummary[] | null, catalog: FontCatalog
   return useMemo(() => {
     const out: { value: string; label: string }[] = [];
     for (const f of fonts ?? []) {
-      if (f.editable) out.push({ value: `doc:${f.key}`, label: `Document · ${fontLabel(f)}${f.subset ? " (subset)" : ""}` });
+      if (f.editable) out.push({ value: `doc:${f.key}`, label: t("Document · {0}{1}", fontLabel(f), f.subset ? " (subset)" : "") });
     }
-    for (const fam of catalog?.families ?? []) out.push({ value: `sys:${fam}`, label: `Installed · ${fam}` });
-    for (const s of catalog?.standard ?? []) out.push({ value: `std:${s}`, label: `Standard · ${s}` });
+    for (const fam of catalog?.families ?? []) out.push({ value: `sys:${fam}`, label: t("Installed · {0}", fam) });
+    for (const s of catalog?.standard ?? []) out.push({ value: `std:${s}`, label: t("Standard · {0}", s) });
     return out;
   }, [fonts, catalog]);
 }
@@ -178,7 +179,7 @@ function LinesInspector({
   const font = fonts?.find((f) => f.key === l.fontKey) ?? null;
   const block = selection.block;
   const inParagraph = !many && block && block.lines.length > 1;
-  const [stack, setStack] = useState(`"${l.family}", sans-serif`);
+  const [stack, setStack] = useState(t("\"{0}\", sans-serif", l.family));
   const sizeText = (v: number) => v.toFixed(2).replace(/\.?0+$/, "");
   const [size, setSize] = useState(sizeText(l.size));
   const [text, setText] = useState(l.text);
@@ -208,7 +209,7 @@ function LinesInspector({
   return (
     <>
       <section className="side-section">
-        <span className="eyebrow">{many ? `${selection.lines.length} lines` : inParagraph ? "Line in a paragraph" : "Text line"}</span>
+        <span className="eyebrow">{many ? t("{0} lines", selection.lines.length) : inParagraph ? t("Line in a paragraph") : t("Text line")}</span>
         {!many ? (
           <div
             className="line-preview"
@@ -235,7 +236,7 @@ function LinesInspector({
         {editable && !many && (
           <div style={{ marginTop: 12 }}>
             <TextField
-              label="Text"
+              label={t("Text")}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -248,21 +249,21 @@ function LinesInspector({
           <div className="inspector-actions">
             {!many && (
               <Button appearance="primary" spacing="compact" iconBefore={Save} disabled={text === l.text} onClick={() => onEdit({ text })}>
-                Apply
+                {t("Apply")}
               </Button>
             )}
             {!many && (
               <Button spacing="compact" iconBefore={Pencil} onClick={() => onStartEditing("line")}>
-                Edit line
+                {t("Edit line")}
               </Button>
             )}
             {inParagraph && (
               <Button spacing="compact" iconBefore={Pilcrow} onClick={() => onStartEditing("block")} shortcut="Enter">
-                Edit paragraph
+                {t("Edit paragraph")}
               </Button>
             )}
             <Button appearance="subtle" spacing="compact" iconBefore={Trash2} onClick={() => onEdit({ delete: true })} shortcut="Del">
-              Delete
+              {t("Delete")}
             </Button>
           </div>
         )}
@@ -270,7 +271,7 @@ function LinesInspector({
 
       {!many && (
         <section className="side-section">
-          <span className="eyebrow">Fonts in this line</span>
+          <span className="eyebrow">{t("Fonts in this line")}</span>
           {l.spans.length > 1 ? (
             <div className="spans">
               {l.spans.map((s, i) => (
@@ -279,30 +280,30 @@ function LinesInspector({
                   <span className="span-text">{[...l.text].slice(s.start, s.end).join("")}</span>
                   <span className="is-muted">
                     {s.family}
-                    {s.bold ? " Bold" : ""}
-                    {s.italic ? " Italic" : ""} · {s.em.toFixed(1)}
+                    {s.bold ? t(" Bold") : ""}
+                    {s.italic ? t(" Italic") : ""} · {s.em.toFixed(1)}
                   </span>
                 </div>
               ))}
               <p className="is-muted" style={{ fontSize: 12, marginTop: 6 }}>
-                Edits keep each word’s style: new text takes the style of the text it replaces.
+                {t("Edits keep each word’s style: new text takes the style of the text it replaces.")}
               </p>
             </div>
           ) : (
             <dl className="props" style={{ marginTop: 8 }}>
-              <dt>Family</dt>
+              <dt>{t("Family")}</dt>
               <dd>{font ? fontLabel(font) : l.family}</dd>
-              <dt>PostScript</dt>
+              <dt>{t("PostScript")}</dt>
               <dd className="is-mono">{l.fontName}</dd>
               {font && (
                 <>
-                  <dt>Type</dt>
+                  <dt>{t("Type")}</dt>
                   <dd>
                     {font.kind} {font.subset && <Lozenge appearance="information">subset</Lozenge>}
                   </dd>
-                  <dt>Glyphs</dt>
+                  <dt>{t("Glyphs")}</dt>
                   <dd>{font.glyphs.toLocaleString()}</dd>
-                  <dt>Installed</dt>
+                  <dt>{t("Installed")}</dt>
                   <dd>{font.systemMatch ?? "no"}</dd>
                 </>
               )}
@@ -313,11 +314,11 @@ function LinesInspector({
 
       {editable && (
         <section className="side-section">
-          <span className="eyebrow">Style</span>
+          <span className="eyebrow">{t("Style")}</span>
           <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
             <div className="row">
               <TextField
-                label={many ? "Size of first (pt)" : "Size (pt)"}
+                label={many ? t("Size of first (pt)") : t("Size (pt)")}
                 value={size}
                 mono
                 inputMode="decimal"
@@ -326,7 +327,7 @@ function LinesInspector({
                 onKeyDown={(e) => e.key === "Enter" && applySize()}
               />
               <label className="color-field">
-                <span className="field-label">Colour</span>
+                <span className="field-label">{t("Colour")}</span>
                 <input
                   type="color"
                   className="color-input"
@@ -341,28 +342,28 @@ function LinesInspector({
               </label>
             </div>
             <Select
-              label="Change font"
+              label={t("Change font")}
               value={fontPick}
-              options={[{ value: "", label: many ? "Keep each line’s font" : "Keep its font" }, ...options]}
+              options={[{ value: "", label: many ? t("Keep each line’s font") : t("Keep its font") }, ...options]}
               onChange={setFontPick}
             />
             {fontPick.startsWith("sys:") && (
               <div style={{ display: "flex", gap: 16 }}>
-                <Toggle label="Bold" checked={bold} onChange={setBold} />
-                <Toggle label="Italic" checked={italic} onChange={setItalic} />
+                <Toggle label={t("Bold")} checked={bold} onChange={setBold} />
+                <Toggle label={t("Italic")} checked={italic} onChange={setItalic} />
               </div>
             )}
             {fontPick && (
               <div className="inspector-actions" style={{ marginTop: 0 }}>
                 <Button appearance="primary" spacing="compact" onClick={() => onEdit({ font: parseChoice(fontPick, bold, italic) })}>
-                  Apply font
+                  {t("Apply font")}
                 </Button>
               </div>
             )}
           </div>
           {!many && (
             <p className="is-muted" style={{ marginTop: 8, fontSize: 12 }}>
-              Drawn at {l.em.toFixed(2)} pt{Math.abs(l.angle) > 0.5 ? `, rotated ${l.angle.toFixed(0)}°` : ""}.
+              {t("Drawn at")}{" "}{l.em.toFixed(2)} pt{Math.abs(l.angle) > 0.5 ? t(", rotated {0}°", l.angle.toFixed(0)) : ""}.
             </p>
           )}
         </section>
@@ -370,19 +371,19 @@ function LinesInspector({
 
       {!many && (
         <section className="side-section">
-          <span className="eyebrow">Position</span>
+          <span className="eyebrow">{t("Position")}</span>
           <dl className="props" style={{ marginTop: 8 }}>
             <dt>x</dt>
             <dd className="is-mono">{length(l.origin[0], units)}</dd>
             <dt>y</dt>
             <dd className="is-mono">{length(l.origin[1], units)}</dd>
-            <dt>Page</dt>
+            <dt>{t("Page")}</dt>
             <dd>{selection.page + 1}</dd>
             {inParagraph && block && (
               <>
-                <dt>Paragraph</dt>
+                <dt>{t("Paragraph")}</dt>
                 <dd>
-                  {block.lines.length} lines, {block.align}, {length(block.width, units)} wide
+                  {block.lines.length} {t("lines,")}{" "}{block.align}, {length(block.width, units)} wide
                 </dd>
               </>
             )}
@@ -391,8 +392,7 @@ function LinesInspector({
       )}
       {editable && (
         <p className="is-muted" style={{ marginTop: 12, fontSize: 12 }}>
-          Drag selected lines to move them; they snap to nearby edges and baselines (hold Alt to move freely). Arrow keys
-          nudge by 1 pt, Shift+arrow by 10 pt. Shift-click or drag a box to select more lines.
+          {t("Drag selected lines to move them; they snap to nearby edges and baselines (hold Alt to move freely). Arrow keys nudge by 1 pt, Shift+arrow by 10 pt. Shift-click or drag a box to select more lines.")}
         </p>
       )}
     </>
@@ -408,8 +408,8 @@ function Swatches({ value, onChange, allowNone }: { value: string | null; onChan
         <button
           type="button"
           className={cx("swatch", "is-none", value === null && "is-selected")}
-          aria-label="No fill"
-          data-tooltip="No fill"
+          aria-label={t("No fill")}
+          data-tooltip={t("No fill")}
           onClick={() => onChange(null)}
         />
       )}
@@ -429,24 +429,24 @@ function Swatches({ value, onChange, allowNone }: { value: string | null; onChan
         style={{ width: 28, height: 24 }}
         value={value ?? "#ffffff"}
         onChange={(e) => onChange(e.target.value)}
-        aria-label="Custom colour"
+        aria-label={t("Custom colour")}
       />
     </div>
   );
 }
 
 const ANNOT_LABELS: Record<string, string> = {
-  Text: "Sticky note",
-  Highlight: "Highlight",
-  Underline: "Underline",
+  Text: t("Sticky note"),
+  Highlight: t("Highlight"),
+  Underline: t("Underline"),
   StrikeOut: "Strike-out",
-  Ink: "Drawing",
-  Square: "Rectangle",
-  Circle: "Ellipse",
-  Line: "Line",
-  Polygon: "Polygon",
-  FreeText: "Text box",
-  Stamp: "Stamp",
+  Ink: t("Drawing"),
+  Square: t("Rectangle"),
+  Circle: t("Ellipse"),
+  Line: t("Line"),
+  Polygon: t("Polygon"),
+  FreeText: t("Text box"),
+  Stamp: t("Stamp"),
   Link: "Link",
 };
 
@@ -475,31 +475,31 @@ function AnnotInspector({
       <section className="side-section">
         <span className="eyebrow">{ANNOT_LABELS[a.subtype] ?? a.subtype}</span>
         <dl className="props" style={{ marginTop: 8 }}>
-          <dt>Page</dt>
+          <dt>{t("Page")}</dt>
           <dd>{selection.page + 1}</dd>
           {a.author && (
             <>
-              <dt>Author</dt>
+              <dt>{t("Author")}</dt>
               <dd>{a.author}</dd>
             </>
           )}
           {isLink && (
             <>
-              <dt>Goes to</dt>
+              <dt>{t("Goes to")}</dt>
               <dd className="is-mono">{a.target ?? "—"}</dd>
             </>
           )}
         </dl>
         {!a.editable && !isLink && (
           <p className="is-muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Made by another program: it can be moved and deleted, but its look cannot be redrawn here.
+            {t("Made by another program: it can be moved and deleted, but its look cannot be redrawn here.")}
           </p>
         )}
       </section>
 
       {isLink ? (
         <section className="side-section">
-          <TextField label="Web address or page" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="https://… or 12" />
+          <TextField label={t("Web address or page")} value={target} onChange={(e) => setTarget(e.target.value)} placeholder={t("https://… or 12")} />
           <div className="inspector-actions">
             <Button
               appearance="primary"
@@ -511,28 +511,28 @@ function AnnotInspector({
                   : onUpdate({ uri: /^[a-z][a-z0-9+.-]*:/i.test(target.trim()) ? target.trim() : `https://${target.trim()}` })
               }
             >
-              Change target
+              {t("Change target")}
             </Button>
           </div>
         </section>
       ) : (
         a.editable && (
           <section className="side-section">
-            <span className="eyebrow">Look</span>
+            <span className="eyebrow">{t("Look")}</span>
             <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
               <div>
-                <span className="field-label">Colour</span>
+                <span className="field-label">{t("Colour")}</span>
                 <Swatches value={a.color ? rgbToHex(a.color) : "#000000"} onChange={(c) => c && onUpdate({ color: hexToRgb(c) })} />
               </div>
               {fillable && (
                 <div>
-                  <span className="field-label">Fill</span>
+                  <span className="field-label">{t("Fill")}</span>
                   <Swatches value={a.fill ? rgbToHex(a.fill) : null} allowNone onChange={(c) => onUpdate({ fill: c ? hexToRgb(c) : null })} />
                 </div>
               )}
               {stroked && (
                 <TextField
-                  label="Line width (pt)"
+                  label={t("Line width (pt)")}
                   defaultValue={String(a.width)}
                   key={`w-${a.index}-${a.width}`}
                   mono
@@ -543,7 +543,7 @@ function AnnotInspector({
                 />
               )}
               <label className="field">
-                <span className="field-label">Opacity · {Math.round(a.opacity * 100)}%</span>
+                <span className="field-label">{t("Opacity ·")}{" "}{Math.round(a.opacity * 100)}%</span>
                 <input
                   type="range"
                   min={10}
@@ -563,12 +563,12 @@ function AnnotInspector({
       {!isLink && (
         <section className="side-section">
           <label className="field">
-            <span className="field-label">{a.subtype === "FreeText" ? "Text" : a.subtype === "Stamp" ? "Label" : "Comment"}</span>
+            <span className="field-label">{a.subtype === "FreeText" ? "Text" : a.subtype === "Stamp" ? t("Label") : t("Comment")}</span>
             <textarea className="text-area" value={contents} onChange={(e) => setContents(e.target.value)} rows={4} />
           </label>
           <div className="inspector-actions">
             <Button appearance="primary" spacing="compact" disabled={contents === a.contents} onClick={() => onUpdate({ contents })}>
-              Apply
+              {t("Apply")}
             </Button>
           </div>
         </section>
@@ -577,13 +577,13 @@ function AnnotInspector({
       {a.removable && (
         <div className="inspector-actions">
           <Button appearance="danger" spacing="compact" iconBefore={Trash2} onClick={onDelete} shortcut="Del">
-            Delete
+            {t("Delete")}
           </Button>
         </div>
       )}
       {a.editable && (
         <p className="is-muted" style={{ marginTop: 12, fontSize: 12 }}>
-          Drag it on the page to move it.
+          {t("Drag it on the page to move it.")}
         </p>
       )}
     </>
@@ -607,47 +607,47 @@ function ImageInspector({
   const [x0, y0, x1, y1] = im.bbox;
   return (
     <section className="side-section">
-      <span className="eyebrow">Image</span>
+      <span className="eyebrow">{t("Image")}</span>
       <dl className="props" style={{ marginTop: 8 }}>
-        <dt>Pixels</dt>
+        <dt>{t("Pixels")}</dt>
         <dd className="is-mono">
           {im.width} × {im.height}
         </dd>
-        <dt>Shown at</dt>
+        <dt>{t("Shown at")}</dt>
         <dd>
           {length(x1 - x0, units)} × {length(y1 - y0, units)}
         </dd>
-        <dt>Resolution</dt>
+        <dt>{t("Resolution")}</dt>
         <dd>
-          {Math.round(im.dpi)} dpi {im.dpi < 150 && <Lozenge appearance="warning">low for print</Lozenge>}
+          {Math.round(im.dpi)} dpi {im.dpi < 150 && <Lozenge appearance="warning">{t("low for print")}</Lozenge>}
         </dd>
-        <dt>Stored as</dt>
+        <dt>{t("Stored as")}</dt>
         <dd>
           {im.filter === "DCTDecode" ? "JPEG" : im.filter || "uncompressed"} · {im.colorSpace || "—"} · {im.bits} bit
-          {im.hasAlpha ? " · transparency" : ""}
+          {im.hasAlpha ? t(" · transparency") : ""}
         </dd>
-        <dt>Page</dt>
+        <dt>{t("Page")}</dt>
         <dd>{selection.page + 1}</dd>
       </dl>
       <div className="inspector-actions">
         <Button spacing="compact" iconBefore={ImageUp} onClick={onReplace}>
-          Replace…
+          {t("Replace…")}
         </Button>
         <Button spacing="compact" iconBefore={Download} onClick={onExtract} disabled={im.inline}>
-          Save image…
+          {t("Save image…")}
         </Button>
         <Button appearance="subtle" spacing="compact" iconBefore={Trash2} onClick={onDelete} shortcut="Del">
-          Delete
+          {t("Delete")}
         </Button>
       </div>
       <p className="is-muted" style={{ marginTop: 12, fontSize: 12 }}>
-        Drag the image to move it, or its corner to resize it (hold Shift to change its proportions).
+        {t("Drag the image to move it, or its corner to resize it (hold Shift to change its proportions).")}
       </p>
     </section>
   );
 }
 
-export const STAMPS = ["Approved", "Draft", "Confidential", "Final", "Reviewed", "Not approved", "Void", "For comment"];
+export const STAMPS = [t("Approved"), t("Draft"), t("Confidential"), t("Final"), t("Reviewed"), t("Not approved"), t("Void"), t("For comment")];
 
 function ToolOptionsInspector({
   tool,
@@ -661,19 +661,19 @@ function ToolOptionsInspector({
   if (tool === "stamp") {
     return (
       <section className="side-section">
-        <Select label="Stamp" value={options.stampLabel} options={STAMPS.map((s) => ({ value: s, label: s }))} onChange={(stampLabel) => onOptions({ ...options, stampLabel })} />
+        <Select label={t("Stamp")} value={options.stampLabel} options={STAMPS.map((s) => ({ value: s, label: s }))} onChange={(stampLabel) => onOptions({ ...options, stampLabel })} />
       </section>
     );
   }
   if (["rect", "ellipse", "polygon", "textbox"].includes(tool)) {
     return (
       <section className="side-section">
-        <span className="field-label">Fill</span>
+        <span className="field-label">{t("Fill")}</span>
         <Swatches value={options.fill} allowNone onChange={(fill) => onOptions({ ...options, fill })} />
         {tool === "textbox" && (
           <div style={{ marginTop: 12 }}>
             <TextField
-              label="Text size (pt)"
+              label={t("Text size (pt)")}
               defaultValue={String(options.textSize)}
               mono
               onBlur={(e) => {
@@ -710,65 +710,65 @@ function RedactInspector({
   return (
     <>
       <section className="side-section">
-        <span className="eyebrow">Redaction</span>
+        <span className="eyebrow">{t("Redaction")}</span>
         <p style={{ marginTop: 8 }}>
-          {count === 0 ? "No areas marked yet. Drag over the page to mark what must go." : `${count} area${count === 1 ? "" : "s"} marked.`}
+          {count === 0 ? t("No areas marked yet. Drag over the page to mark what must go.") : t("{0} area{1} marked.", count, count === 1 ? "" : "s")}
         </p>
         <div className="notice" style={{ marginTop: 10 }}>
           <Info size={14} aria-hidden="true" />
           <span>
-            Applying removes the text, image pixels, drawings and annotations under each mark from the file itself, not just from view.
+            {t("Applying removes the text, image pixels, drawings and annotations under each mark from the file itself, not just from view.")}
           </span>
         </div>
       </section>
       <section className="side-section">
-        <span className="eyebrow">Mark every occurrence</span>
+        <span className="eyebrow">{t("Mark every occurrence")}</span>
         <div className="row" style={{ marginTop: 8 }}>
           <TextField
-            label="Text"
+            label={t("Text")}
             value={query}
-            placeholder="A name, number…"
+            placeholder={t("A name, number…")}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && query.trim() && onFind(query.trim())}
           />
           <Button spacing="compact" disabled={!query.trim()} onClick={() => onFind(query.trim())}>
-            Mark all
+            {t("Mark all")}
           </Button>
         </div>
       </section>
       <section className="side-section">
         <Select
-          label="Cover removed areas with"
+          label={t("Cover removed areas with")}
           value={fill}
           onChange={onFill}
           options={[
-            { value: "black", label: "A black box" },
-            { value: "white", label: "A white box" },
-            { value: "none", label: "Nothing (leave blank)" },
+            { value: "black", label: t("A black box") },
+            { value: "white", label: t("A white box") },
+            { value: "none", label: t("Nothing (leave blank)") },
           ]}
         />
         <div className="inspector-actions">
           {!confirm ? (
             <Button appearance="danger" spacing="compact" iconBefore={EyeOff} disabled={count === 0} onClick={() => setConfirm(true)}>
-              Apply redactions…
+              {t("Apply redactions…")}
             </Button>
           ) : (
             <>
               <Button appearance="danger" spacing="compact" onClick={onApply}>
-                Remove for good
+                {t("Remove for good")}
               </Button>
               <Button appearance="subtle" spacing="compact" onClick={() => setConfirm(false)}>
-                Cancel
+                {t("Cancel")}
               </Button>
             </>
           )}
           <Button appearance="subtle" spacing="compact" disabled={count === 0} onClick={onClear}>
-            Clear marks
+            {t("Clear marks")}
           </Button>
         </div>
         {confirm && (
           <p className="is-muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Undo still works until you save; after saving, the removed content cannot be recovered from the file.
+            {t("Undo still works until you save; after saving, the removed content cannot be recovered from the file.")}
           </p>
         )}
       </section>
@@ -779,14 +779,14 @@ function RedactInspector({
 function CropInspector({ onUncrop }: { onUncrop: (scope: "page" | "all") => void }) {
   return (
     <section className="side-section">
-      <span className="eyebrow">Crop</span>
-      <p style={{ marginTop: 8 }}>Drag the area to keep on the page. Cropping hides the rest; it is not deleted.</p>
+      <span className="eyebrow">{t("Crop")}</span>
+      <p style={{ marginTop: 8 }}>{t("Drag the area to keep on the page. Cropping hides the rest; it is not deleted.")}</p>
       <div className="inspector-actions">
         <Button spacing="compact" onClick={() => onUncrop("page")}>
-          Remove crop from this page
+          {t("Remove crop from this page")}
         </Button>
         <Button appearance="subtle" spacing="compact" onClick={() => onUncrop("all")}>
-          From all pages
+          {t("From all pages")}
         </Button>
       </div>
     </section>
@@ -794,9 +794,9 @@ function CropInspector({ onUncrop }: { onUncrop: (scope: "page" | "all") => void
 }
 
 function choiceKey(c: FontChoice): string {
-  if (c.kind === "document") return `doc:${c.key}`;
-  if (c.kind === "system") return `sys:${c.family}`;
-  return `std:${c.name}`;
+  if (c.kind === "document") return t("doc:{0}", c.key);
+  if (c.kind === "system") return t("sys:{0}", c.family);
+  return t("std:{0}", c.name);
 }
 
 function TextToolInspector({
@@ -822,23 +822,23 @@ function TextToolInspector({
 
   return (
     <section className="side-section">
-      <span className="eyebrow">New text</span>
+      <span className="eyebrow">{t("New text")}</span>
       <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
-        <Select label="Font" value={choiceKey(style.font)} options={options.length ? options : [{ value: choiceKey(style.font), label: "Loading fonts…" }]} onChange={setFont} />
+        <Select label={t("Font")} value={choiceKey(style.font)} options={options.length ? options : [{ value: choiceKey(style.font), label: t("Loading fonts…") }]} onChange={setFont} />
         {style.font.kind === "document" && (
           <p className="is-muted" style={{ fontSize: 12 }}>
-            Written in the document’s own font. Characters its subset lacks come from the same typeface if it is installed.
+            {t("Written in the document’s own font. Characters its subset lacks come from the same typeface if it is installed.")}
           </p>
         )}
         {style.font.kind === "system" && (
           <div style={{ display: "grid", gap: 8 }}>
             <Toggle
-              label="Bold"
+              label={t("Bold")}
               checked={style.font.bold}
               onChange={(v) => style.font.kind === "system" && onChange({ ...style, font: { ...style.font, bold: v } })}
             />
             <Toggle
-              label="Italic"
+              label={t("Italic")}
               checked={style.font.italic}
               onChange={(v) => style.font.kind === "system" && onChange({ ...style, font: { ...style.font, italic: v } })}
             />
@@ -846,7 +846,7 @@ function TextToolInspector({
         )}
         <div className="row">
           <TextField
-            label="Size (pt)"
+            label={t("Size (pt)")}
             value={size}
             mono
             inputMode="decimal"
@@ -858,12 +858,12 @@ function TextToolInspector({
             }}
           />
           <label className="color-field">
-            <span className="field-label">Colour</span>
+            <span className="field-label">{t("Colour")}</span>
             <input type="color" className="color-input" value={style.color} onChange={(e) => onChange({ ...style, color: e.target.value })} />
           </label>
         </div>
         <p className="is-muted" style={{ fontSize: 12 }}>
-          Click on the page to place text. Ctrl+Enter places it, Enter starts a new line.
+          {t("Click on the page to place text. Ctrl+Enter places it, Enter starts a new line.")}
         </p>
       </div>
     </section>
@@ -884,25 +884,25 @@ function MarkInspector({
   onSettings: (s: Settings) => void;
 }) {
   const title: Record<string, string> = {
-    highlight: "Highlight",
-    underline: "Underline",
+    highlight: t("Highlight"),
+    underline: t("Underline"),
     strikeout: "Strike-out",
-    note: "Sticky note",
-    ink: "Drawing",
-    rect: "Rectangle",
-    ellipse: "Ellipse",
-    line: "Line",
-    arrow: "Arrow",
-    polygon: "Polygon",
-    textbox: "Text box",
-    stamp: "Stamp",
+    note: t("Sticky note"),
+    ink: t("Drawing"),
+    rect: t("Rectangle"),
+    ellipse: t("Ellipse"),
+    line: t("Line"),
+    arrow: t("Arrow"),
+    polygon: t("Polygon"),
+    textbox: t("Text box"),
+    stamp: t("Stamp"),
   };
   return (
     <section className="side-section">
       <span className="eyebrow">{title[tool]}</span>
       <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
         <div>
-          <span className="field-label">Colour</span>
+          <span className="field-label">{t("Colour")}</span>
           <div className="swatches" style={{ marginTop: 6 }}>
             {MARK_SWATCHES.map((c) => (
               <button
@@ -914,12 +914,12 @@ function MarkInspector({
                 onClick={() => onColor(c)}
               />
             ))}
-            <input type="color" className="color-input" style={{ width: 28, height: 24 }} value={color} onChange={(e) => onColor(e.target.value)} aria-label="Custom colour" />
+            <input type="color" className="color-input" style={{ width: 28, height: 24 }} value={color} onChange={(e) => onColor(e.target.value)} aria-label={t("Custom colour")} />
           </div>
         </div>
         {["ink", "rect", "ellipse", "line", "arrow", "polygon"].includes(tool) && (
           <TextField
-            label="Line width (pt)"
+            label={t("Line width (pt)")}
             value={String(settings.inkWidth)}
             mono
             onChange={(e) => {
@@ -929,9 +929,9 @@ function MarkInspector({
           />
         )}
         <TextField
-          label="Author"
+          label={t("Author")}
           value={settings.author}
-          placeholder="Shown on notes and highlights"
+          placeholder={t("Shown on notes and highlights")}
           onChange={(e) => onSettings({ ...settings, author: e.target.value })}
         />
       </div>
@@ -956,29 +956,29 @@ function DocInspector({
   return (
     <>
       <section className="side-section">
-        <span className="eyebrow">Document</span>
+        <span className="eyebrow">{t("Document")}</span>
         <dl className="props" style={{ marginTop: 8 }}>
-          <dt>File</dt>
+          <dt>{t("File")}</dt>
           <dd>{info.state.name}</dd>
           {info.state.path && (
             <>
-              <dt>Folder</dt>
+              <dt>{t("Folder")}</dt>
               <dd className="is-muted">{info.state.path.replace(/[\\/][^\\/]*$/, "")}</dd>
             </>
           )}
-          <dt>Pages</dt>
+          <dt>{t("Pages")}</dt>
           <dd>{info.state.pages}</dd>
-          <dt>Version</dt>
-          <dd>PDF {info.version}</dd>
+          <dt>{t("Version")}</dt>
+          <dd>{t("PDF")}{" "}{info.version}</dd>
           {info.fileSize > 0 && (
             <>
-              <dt>Size</dt>
+              <dt>{t("Size")}</dt>
               <dd>{bytes(info.fileSize)}</dd>
             </>
           )}
           {pageSize && (
             <>
-              <dt>Page</dt>
+              <dt>{t("Page")}</dt>
               <dd>
                 {length(pageSize.w, units)} × {length(pageSize.h, units)}
                 {paperName(pageSize.w, pageSize.h) && <span className="is-muted"> · {paperName(pageSize.w, pageSize.h)}</span>}
@@ -987,41 +987,41 @@ function DocInspector({
           )}
           {info.meta.creator && (
             <>
-              <dt>Creator</dt>
+              <dt>{t("Creator")}</dt>
               <dd>{info.meta.creator}</dd>
             </>
           )}
           {info.meta.producer && (
             <>
-              <dt>Producer</dt>
+              <dt>{t("Producer")}</dt>
               <dd>{info.meta.producer}</dd>
             </>
           )}
           {info.meta.created && (
             <>
-              <dt>Created</dt>
+              <dt>{t("Created")}</dt>
               <dd>{pdfDate(info.meta.created)}</dd>
             </>
           )}
           {info.meta.modified && (
             <>
-              <dt>Modified</dt>
+              <dt>{t("Modified")}</dt>
               <dd>{pdfDate(info.meta.modified)}</dd>
             </>
           )}
         </dl>
       </section>
       <section className="side-section">
-        <span className="eyebrow">Properties</span>
+        <span className="eyebrow">{t("Properties")}</span>
         <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
-          <TextField label="Title" value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} />
-          <TextField label="Author" value={meta.author} onChange={(e) => setMeta({ ...meta, author: e.target.value })} />
-          <TextField label="Subject" value={meta.subject} onChange={(e) => setMeta({ ...meta, subject: e.target.value })} />
-          <TextField label="Keywords" value={meta.keywords} onChange={(e) => setMeta({ ...meta, keywords: e.target.value })} />
+          <TextField label={t("Title")} value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} />
+          <TextField label={t("Author")} value={meta.author} onChange={(e) => setMeta({ ...meta, author: e.target.value })} />
+          <TextField label={t("Subject")} value={meta.subject} onChange={(e) => setMeta({ ...meta, subject: e.target.value })} />
+          <TextField label={t("Keywords")} value={meta.keywords} onChange={(e) => setMeta({ ...meta, keywords: e.target.value })} />
         </div>
         <div className="inspector-actions">
           <Button appearance="primary" spacing="compact" disabled={!changed} onClick={() => onSave(meta)}>
-            Apply properties
+            {t("Apply properties")}
           </Button>
         </div>
       </section>

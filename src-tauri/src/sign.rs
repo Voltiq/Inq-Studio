@@ -20,7 +20,7 @@ use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFo
 use serde::{Deserialize, Serialize};
 
 /// Room reserved for the signature value, in bytes.
-const CONTENTS_BYTES: usize = 16384;
+pub(crate) const CONTENTS_BYTES: usize = 24576;
 const RANGE_PLACEHOLDER: i64 = 9_999_999_999;
 
 // ---------------------------------------------------------------------------
@@ -298,6 +298,8 @@ pub struct SignOptions {
     pub rect: Option<[f32; 4]>,
     /// Sign into this existing empty signature field instead of adding one.
     pub field: Option<String>,
+    /// RFC 3161 timestamp authority to get a timestamp from; empty for none.
+    pub timestamp_url: String,
 }
 
 fn win_ansi(text: &str) -> Vec<u8> {
@@ -559,7 +561,7 @@ pub struct NewIdentity {
     pub password: String,
 }
 
-pub use verify::{create_identity, file_identity, sign_with, store_identities};
+pub use verify::{create_identity, file_identity, sign_with, store_identities, timestamp};
 
 // ---------------------------------------------------------------------------
 // Windows cryptography
@@ -1122,6 +1124,70 @@ mod verify {
         })
     }
 
+    /// Asks a timestamp authority (RFC 3161) to confirm when the signature
+    /// in `cms` was made, and stores its answer in the signature as an
+    /// unsigned attribute (PAdES B-T). Only a hash of the signature value
+    /// leaves the computer.
+    pub fn timestamp(cms: Vec<u8>, url: &str) -> Result<Vec<u8>, String> {
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err("The timestamp server address must start with http:// or https://.".into());
+        }
+        unsafe {
+            let handle = CryptMsgOpenToDecode(ENCODING.0, CMSG_DETACHED_FLAG, 0, None, None, None);
+            if handle.is_null() {
+                return Err("Windows could not read the new signature.".into());
+            }
+            let msg = Msg(handle);
+            CryptMsgUpdate(msg.0, Some(&cms), true).map_err(|e| format!("Windows could not read the new signature: {}", e.message()))?;
+            let value = msg_param(&msg, CMSG_ENCRYPTED_DIGEST, 0).ok_or("The signature value could not be read.")?;
+            let mut nonce = [0u8; 8];
+            let _ = getrandom::fill(&mut nonce);
+            nonce[7] &= 0x7f;
+            let para = CRYPT_TIMESTAMP_PARA {
+                pszTSAPolicyId: PCSTR::null(),
+                fRequestCerts: true.into(),
+                Nonce: CRYPT_INTEGER_BLOB { cbData: nonce.len() as u32, pbData: nonce.as_mut_ptr() },
+                cExtension: 0,
+                rgExtension: std::ptr::null_mut(),
+            };
+            let mut context: *mut CRYPT_TIMESTAMP_CONTEXT = std::ptr::null_mut();
+            CryptRetrieveTimeStamp(&HSTRING::from(url), TIMESTAMP_VERIFY_CONTEXT_SIGNATURE, 20_000, PCSTR(OID_SHA256.as_ptr()), Some(&para), &value, &mut context, std::ptr::null_mut(), None)
+                .map_err(|e| format!("The timestamp server did not give a timestamp ({}). Check the address in Settings, or clear it to sign without one.", e.message().trim()))?;
+            if context.is_null() {
+                return Err("The timestamp server gave an empty answer.".into());
+            }
+            let token = std::slice::from_raw_parts((*context).pbEncoded, (*context).cbEncoded as usize).to_vec();
+            CryptMemFree(Some(context as *const c_void));
+
+            // Attribute ::= SEQUENCE { id-aa-signatureTimeStampToken, SET { token } }
+            let len = |n: usize| -> Vec<u8> {
+                if n < 0x80 {
+                    vec![n as u8]
+                } else if n < 0x100 {
+                    vec![0x81, n as u8]
+                } else {
+                    vec![0x82, (n >> 8) as u8, n as u8]
+                }
+            };
+            let oid = [0x06, 0x0B, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x10, 0x02, 0x0E];
+            let mut set = vec![0x31];
+            set.extend(len(token.len()));
+            set.extend(&token);
+            let mut attr = vec![0x30];
+            attr.extend(len(oid.len() + set.len()));
+            attr.extend(oid);
+            attr.extend(set);
+            let add = CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR_PARA {
+                cbSize: std::mem::size_of::<CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR_PARA>() as u32,
+                dwSignerIndex: 0,
+                blob: CRYPT_INTEGER_BLOB { cbData: attr.len() as u32, pbData: attr.as_mut_ptr() },
+            };
+            CryptMsgControl(msg.0, 0, CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR, Some(&add as *const _ as *const c_void))
+                .map_err(|e| format!("The timestamp could not be stored in the signature: {}", e.message()))?;
+            msg_param(&msg, CMSG_ENCODED_MESSAGE, 0).ok_or_else(|| "The timestamped signature could not be written.".to_string())
+        }
+    }
+
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
@@ -1242,6 +1308,10 @@ mod verify {
     }
 
     pub fn store_identities() -> Result<Vec<Identity>, String> {
+        Err(ONLY_WINDOWS.into())
+    }
+
+    pub fn timestamp(_: Vec<u8>, _: &str) -> Result<Vec<u8>, String> {
         Err(ONLY_WINDOWS.into())
     }
 

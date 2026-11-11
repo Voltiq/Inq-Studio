@@ -329,7 +329,15 @@ pub async fn doc_sign(store: State<'_, Store>, id: u32, identity: sign::Identity
                     (None, true) => return Err("This document is signed already but has no file to append to. Save it first.".into()),
                     _ => store::full_bytes(&mut out, &Protection::None, &None, false)?.0,
                 };
-                let signed = sign::finish(bytes, |a, b| signer(a, b))?;
+                let tsa = options.timestamp_url.trim().to_string();
+                let signed = sign::finish(bytes, |a, b| {
+                    let cms = signer(a, b)?;
+                    if tsa.is_empty() {
+                        Ok(cms)
+                    } else {
+                        sign::timestamp(cms, &tsa)
+                    }
+                })?;
                 store::write_safely(&target, &signed)?;
                 // The document in memory becomes exactly what the file holds, value included.
                 let reread = store::load_bytes(&signed, None)?;

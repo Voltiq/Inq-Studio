@@ -171,7 +171,7 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - The new on-page interactions are type-checked, the build was launched against a generated document and two
   layout bugs found there were fixed, but the tools have not been clicked through by hand or by UI tests
 
-## v0.4 — Professional (this build, 2026-11-11)
+## v0.4 — Professional (2026-11-11)
 
 ### Engine (Rust)
 - [x] **OCR for scans**: text is recognised by the recogniser built into Windows (`Windows.Media.Ocr`, offline, with
@@ -248,6 +248,7 @@ streams — real, selectable, searchable text, not a patch painted over the page
   signatures are recognised but their permitted-changes rules are not evaluated; a protected document cannot
   be signed
 - The visible signature is placed in a page corner at a fixed size (no drawing it by hand yet)
+- ~~No timestamp from a timestamp authority~~ (added in v1.0)
 - PDF/A: not a certified validator. Not checked: glyph widths against the font program, ICC profile contents,
   the XMP schema rules of PDF/A-1, PDF/A level a and u. Not converted: CMYK device colours (no CMYK profile is
   supplied), transparency for PDF/A-1, fonts that are neither embedded nor installed, composite fonts without a
@@ -263,13 +264,42 @@ streams — real, selectable, searchable text, not a patch painted over the page
 - The new dialogs and the compare view are type-checked and the build was launched (see below); they have not
   been clicked through by hand or by UI tests
 
-## v1.0 — Release
+## v1.0 — Release (this build, 2026-11-11)
 
-- [ ] Large documents: lazy object loading (needs a different parser front end)
-- [ ] Signatures: timestamps (PAdES B-T), long-term validation, placing a visible signature by drawing
-- [ ] NSIS installer, code signing, auto-update
-- [ ] Log file and crash reports
-- [ ] German translation
-- [ ] Browser preview backend for UI work (like Atomiq Studio's mock)
-- [ ] Front-end unit tests (vitest) and end-to-end UI tests
-- [ ] User guide
+- [x] **NSIS installer** (per user, English and German), with the `.pdf` association; built by
+      `npx tauri build` and by the release workflow
+- [x] **Auto-update** from GitHub Releases: checked once a day and on demand in Settings, signed with the
+      project's update key and verified before installing
+- [x] **Release and CI workflows** (`.github/workflows`): tests and a release build on every push; a `v*` tag
+      builds the installer, signs the update files and publishes the release with notes from `CHANGELOG.md`
+- [x] **Log file and crash reports**, local only: what the app did, failed commands and errors from the
+      window; a panic writes a report with a stack trace, and the next start shows it
+- [x] **German translation** of the whole interface (about 570 strings), following Windows or set in
+      Settings; a test fails when an interface string has no translation; common engine messages (history
+      labels, notices, signature and PDF/A findings) are translated too
+- [x] **Browser preview backend**: `npm run dev` in a plain browser runs the interface against a stand-in
+      engine with a generated sample document
+- [x] **Front-end tests** (vitest, 13): the dropdown with mouse and keyboard, page ranges, formatting, page
+      stamps, translations, the stand-in engine, and a dialog rendered against it
+- [x] **User guide** in English and German (`docs/GUIDE.md`, `docs/ANLEITUNG.md`)
+- [x] **Signature timestamps** (PAdES B-T) from an RFC 3161 timestamp authority set in Settings; tested
+      against a public authority
+- [x] One window: a second start hands its file to the window that is already open
+- [x] Custom dropdowns in the Graphiq look; the theme switches every element at once
+
+### Not in 1.0
+- [ ] **Code signing** of the installer: needs a code-signing certificate, which the project does not have.
+      Until then Windows SmartScreen warns on first install (*More info › Run anyway*)
+- [ ] **End-to-end UI tests** that drive the real app: the interface tests run against the stand-in engine,
+      and the interface was checked by eye in the browser preview, but nothing clicks through the desktop
+      build automatically
+- [ ] **Lazy object loading** for very large files (needs a different parser front end)
+- [ ] Signatures: long-term validation data, and placing a visible signature by drawing it
+- [ ] German for every engine message: errors with file-specific details still appear in English
+
+### Known limits of v1.0
+- The language applies when the app starts; changing it in Settings takes effect at the next start
+- The update check needs the GitHub repository `Voltiq/Inq-Studio` to exist and to have a published release;
+  before that, "Check now" reports that the check did not work
+- The update key (`~/.tauri/inq-studio.key`) has no password. Whoever has the file can sign updates, so it
+  belongs in a password manager and in the repository's Actions secrets, nowhere else

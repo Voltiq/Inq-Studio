@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type 
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 import { cx } from "../../lib/utils";
+import { t } from "../../lib/i18n";
 
 interface Placement {
   left: number;
@@ -142,8 +143,8 @@ export function Select<T extends string>({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={`${id}-list`}
-        aria-labelledby={`${id}-label ${id}`}
+        aria-controls={t("{0}-list", id)}
+        aria-labelledby={t("{0}-label {1}", id, id)}
         aria-activedescendant={open ? `${id}-o${active}` : undefined}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
@@ -159,7 +160,7 @@ export function Select<T extends string>({
             ref={listRef}
             id={`${id}-list`}
             role="listbox"
-            aria-labelledby={`${id}-label`}
+            aria-labelledby={t("{0}-label", id)}
             className={cx("menu", "select-list", place.up && "is-up")}
             style={{ left: place.left, minWidth: place.width, maxHeight: place.maxHeight, ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }) }}
             // Keep the focus on the trigger, so the keyboard keeps working.

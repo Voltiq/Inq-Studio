@@ -3,9 +3,10 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cx } from "../../lib/utils";
 import { IconButton } from "./Button";
+import { t } from "../../lib/i18n";
 
 const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  t("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])");
 
 interface ModalProps {
   title: ReactNode;
@@ -94,7 +95,7 @@ export function Modal({
             {title}
           </h2>
           {!required && (
-            <IconButton icon={X} label="Close" onClick={onClose} spacing="compact" />
+            <IconButton icon={X} label={t("Close")} onClick={onClose} spacing="compact" />
           )}
         </header>
         <div className="modal-body">{children}</div>

@@ -8,6 +8,7 @@ import { cx } from "../lib/utils";
 import { Button } from "./ui/Button";
 import { Kbd } from "./ui/Feedback";
 import type { Selection } from "./Viewer";
+import { t } from "../lib/i18n";
 
 export interface ExtraActions {
   addAnnot: (page: number, annot: NewAnnot) => Promise<boolean>;
@@ -66,7 +67,7 @@ export function FieldsLayer({ vp, page, fields, actions }: { vp: PageViewport; p
               disabled={f.readonly}
               aria-pressed={w.checked}
               aria-label={f.name}
-              onClick={() => actions.setField(f.name, f.kind === "checkbox" ? (w.checked ? "Off" : w.onState ?? "Yes") : w.onState ?? "")}
+              onClick={() => actions.setField(f.name, f.kind === "checkbox" ? (w.checked ? t("Off") : w.onState ?? t("Yes")) : w.onState ?? "")}
             />
           );
         }
@@ -130,7 +131,7 @@ function TextFieldInput({ field, style, tip, onCommit }: { field: FieldInfo; sty
 // Annotations (select tool): select and drag
 // ---------------------------------------------------------------------------
 
-const TEXT_MARKUP = new Set(["Highlight", "Underline", "StrikeOut", "Squiggly", "Link", "Widget", "Popup"]);
+const TEXT_MARKUP = new Set([t("Highlight"), t("Underline"), "StrikeOut", t("Squiggly"), "Link", "Widget", "Popup"]);
 
 export function AnnotsLayer({
   vp,
@@ -255,7 +256,7 @@ export function ImagesLayer({
             key={im.index}
             className={cx("image-box", selected && "is-selected")}
             style={{ left, top, width, height, pointerEvents: "auto" }}
-            data-tooltip={`${im.width} × ${im.height} px · ${Math.round(im.dpi)} dpi`}
+            data-tooltip={t("{0} × {1} px · {2} dpi", im.width, im.height, Math.round(im.dpi))}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               if (!selected) {
@@ -271,7 +272,7 @@ export function ImagesLayer({
             {selected && (
               <span
                 className="resize-handle"
-                aria-label="Resize"
+                aria-label={t("Resize")}
                 onPointerDown={(e) => start(e, "resize")}
                 onPointerMove={(e) => drag && setDrag({ ...drag, dx: e.clientX - drag.x0, dy: e.clientY - drag.y0, keep: !e.shiftKey })}
                 onPointerUp={finish}
@@ -399,7 +400,7 @@ export function ShapesLayer({
                   type="button"
                   className="redact-remove"
                   style={{ pointerEvents: "auto" }}
-                  aria-label="Remove this mark"
+                  aria-label={t("Remove this mark")}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onRedactions(redactions.filter((_, k) => k !== i))}
                 >
@@ -453,7 +454,7 @@ export function ShapesLayer({
           )}
           {tool === "polygon" && poly.length > 0 && (
             <div className="inline-hint" style={{ left: poly[0][0], top: poly[0][1] - 30 }}>
-              {poly.length} points · double-click or <Kbd>Enter</Kbd> to finish · <Kbd>Esc</Kbd> cancel
+              {poly.length} {t("points · double-click or")}{" "}<Kbd>{t("Enter")}</Kbd> {t("to finish ·")}{" "}<Kbd>{t("Esc")}</Kbd> cancel
             </div>
           )}
           {pending && (
@@ -519,19 +520,19 @@ function PendingBox({
       <>
         {box}
         <div className="note-pop" style={at} onPointerDown={(e) => e.stopPropagation()}>
-          <p style={{ marginBottom: 8 }}>Crop to this area:</p>
+          <p style={{ marginBottom: 8 }}>{t("Crop to this area:")}</p>
           <footer style={{ flexWrap: "wrap" }}>
             <Button appearance="subtle" spacing="compact" onClick={onCancel}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button spacing="compact" onClick={() => onCrop("selected")}>
-              Selected pages
+              {t("Selected pages")}
             </Button>
             <Button spacing="compact" onClick={() => onCrop("all")}>
-              All pages
+              {t("All pages")}
             </Button>
             <Button appearance="primary" spacing="compact" onClick={() => onCrop("page")}>
-              This page
+              {t("This page")}
             </Button>
           </footer>
         </div>
@@ -546,7 +547,7 @@ function PendingBox({
           <textarea
             ref={inputRef}
             value={value}
-            placeholder="Text for the box…"
+            placeholder={t("Text for the box…")}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               e.stopPropagation();
@@ -556,10 +557,10 @@ function PendingBox({
           />
           <footer>
             <Button appearance="subtle" spacing="compact" onClick={onCancel}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button appearance="primary" spacing="compact" disabled={!value.trim()} onClick={() => onText(value)}>
-              Add text box
+              {t("Add text box")}
             </Button>
           </footer>
         </div>
@@ -579,7 +580,7 @@ function PendingBox({
           ref={inputRef}
           className="text-input"
           value={value}
-          placeholder="Web address, or a page number"
+          placeholder={t("Web address, or a page number")}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation();
@@ -589,10 +590,10 @@ function PendingBox({
         />
         <footer>
           <Button appearance="subtle" spacing="compact" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button appearance="primary" spacing="compact" disabled={!value.trim()} onClick={submit}>
-            {asPage ? `Link to page ${asPage[2]}` : "Add link"}
+            {asPage ? t("Link to page {0}", asPage[2]) : t("Add link")}
           </Button>
         </footer>
       </div>

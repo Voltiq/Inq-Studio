@@ -32,6 +32,7 @@ import type { PDFDocumentProxy } from "../lib/pdf";
 import { grayPixels, renderPage } from "../lib/raster";
 import { bytes, plural } from "../lib/format";
 import { cx } from "../lib/utils";
+import { t, te } from "../lib/i18n";
 
 /** Runs a change on the document and reloads it; resolves to whether it worked. */
 export type Run = (fn: () => Promise<DocState | EditResult>, success?: string) => Promise<boolean>;
@@ -50,13 +51,13 @@ function when(iso: string): string {
 // ---------------------------------------------------------------------------
 
 const PERMISSIONS: { key: keyof Allowed; label: string }[] = [
-  { key: "print", label: "Print" },
-  { key: "printHigh", label: "Print at full quality" },
-  { key: "copy", label: "Copy text and images" },
-  { key: "modify", label: "Change the content" },
-  { key: "assemble", label: "Insert, delete and rotate pages" },
-  { key: "annotate", label: "Comment and mark up" },
-  { key: "fill", label: "Fill in form fields" },
+  { key: "print", label: t("Print") },
+  { key: "printHigh", label: t("Print at full quality") },
+  { key: "copy", label: t("Copy text and images") },
+  { key: "modify", label: t("Change the content") },
+  { key: "assemble", label: t("Insert, delete and rotate pages") },
+  { key: "annotate", label: t("Comment and mark up") },
+  { key: "fill", label: t("Fill in form fields") },
 ];
 
 export function ProtectDialog({ info, onApply, onClose }: { info: DocInfo; onApply: (req: ProtectRequest | null) => Promise<boolean>; onClose: () => void }) {
@@ -71,11 +72,11 @@ export function ProtectDialog({ info, onApply, onClose }: { info: DocInfo; onApp
   const mismatch = open !== open2;
   const nothing = !open && !(restrict && owner);
   const problem = mismatch
-    ? "The two open passwords differ."
+    ? t("The two open passwords differ.")
     : restrict && !owner && !open
-      ? "Restrictions need a permissions password."
+      ? t("Restrictions need a permissions password.")
       : restrict && owner && owner === open
-        ? "Use a different permissions password; with the same one, everybody who can open the file has every right."
+        ? t("Use a different permissions password; with the same one, everybody who can open the file has every right.")
         : null;
   const apply = async (req: ProtectRequest | null) => {
     setBusy(true);
@@ -85,7 +86,7 @@ export function ProtectDialog({ info, onApply, onClose }: { info: DocInfo; onApp
   };
   return (
     <Modal
-      title="Protect with a password"
+      title={t("Protect with a password")}
       onClose={onClose}
       width="medium"
       closeOnBlanket={false}
@@ -94,12 +95,12 @@ export function ProtectDialog({ info, onApply, onClose }: { info: DocInfo; onApp
           {sec.protected && (
             <span className="modal-footer-start">
               <Button appearance="subtle" disabled={busy} onClick={() => apply(null)}>
-                Remove protection
+                {t("Remove protection")}
               </Button>
             </span>
           )}
           <Button appearance="subtle" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button
             appearance="primary"
@@ -107,35 +108,35 @@ export function ProtectDialog({ info, onApply, onClose }: { info: DocInfo; onApp
             disabled={nothing || !!problem}
             onClick={() => apply({ openPassword: open, ownerPassword: restrict ? owner : "", allowed: restrict ? allowed : { ...allowed, print: true, printHigh: true, modify: true, copy: true, annotate: true, fill: true, assemble: true }, aes256 })}
           >
-            Protect
+            {t("Protect")}
           </Button>
         </>
       }
     >
       <div style={stack}>
         {sec.protected && (
-          <SectionMessage appearance="information" title={sec.pending ? `Will be protected with ${sec.method} on the next save` : `Protected with ${sec.method}`}>
+          <SectionMessage appearance="information" title={sec.pending ? t("Will be protected with {0} on the next save", sec.method) : t("Protected with {0}", sec.method)}>
             {sec.pending
-              ? "Save the document to write the protection."
-              : "Saving keeps this protection and both of its passwords. Enter new passwords below to replace it."}
+              ? t("Save the document to write the protection.")
+              : t("Saving keeps this protection and both of its passwords. Enter new passwords below to replace it.")}
           </SectionMessage>
         )}
         <div className="row">
-          <TextField label="Password to open" type="password" value={open} autoComplete="new-password" onChange={(e) => setOpen(e.target.value)} />
-          <TextField label="Repeat" type="password" value={open2} autoComplete="new-password" error={mismatch && open2 ? "Does not match" : null} onChange={(e) => setOpen2(e.target.value)} />
+          <TextField label={t("Password to open")} type="password" value={open} autoComplete="new-password" onChange={(e) => setOpen(e.target.value)} />
+          <TextField label={t("Repeat")} type="password" value={open2} autoComplete="new-password" error={mismatch && open2 ? t("Does not match") : null} onChange={(e) => setOpen2(e.target.value)} />
         </div>
         <p className="is-muted" style={note}>
-          Leave empty for a document that anyone can open but that restricts what they may do. There is no way to recover a forgotten password.
+          {t("Leave empty for a document that anyone can open but that restricts what they may do. There is no way to recover a forgotten password.")}
         </p>
-        <Toggle label="Restrict what readers may do" checked={restrict} onChange={setRestrict} />
+        <Toggle label={t("Restrict what readers may do")} checked={restrict} onChange={setRestrict} />
         {restrict && (
           <>
             <TextField
-              label="Permissions password"
+              label={t("Permissions password")}
               type="password"
               value={owner}
               autoComplete="new-password"
-              helper="Whoever knows it can change or remove the restrictions."
+              helper={t("Whoever knows it can change or remove the restrictions.")}
               onChange={(e) => setOwner(e.target.value)}
             />
             <div className="check-grid">
@@ -150,17 +151,17 @@ export function ProtectDialog({ info, onApply, onClose }: { info: DocInfo; onApp
               ))}
             </div>
             <p className="is-muted" style={note}>
-              Restrictions are a request to the reading program, not a lock: programs that ignore them exist. Screen readers are always let in.
+              {t("Restrictions are a request to the reading program, not a lock: programs that ignore them exist. Screen readers are always let in.")}
             </p>
           </>
         )}
         <Select
-          label="Encryption"
+          label={t("Encryption")}
           value={aes256 ? "256" : "128"}
           onChange={(v) => setAes256(v === "256")}
           options={[
-            { value: "256", label: "AES-256 (Acrobat X and later)" },
-            { value: "128", label: "AES-128 (Acrobat 7 and later)" },
+            { value: "256", label: t("AES-256 (Acrobat X and later)") },
+            { value: "128", label: t("AES-128 (Acrobat 7 and later)") },
           ]}
         />
         {problem && <SectionMessage appearance="warning">{problem}</SectionMessage>}
@@ -191,22 +192,22 @@ export function OptimizeDialog({ info, onRun, onClose }: { info: DocInfo; onRun:
   const saved = report ? report.sizeBefore - report.sizeAfter : 0;
   return (
     <Modal
-      title="Optimise"
+      title={t("Optimise")}
       onClose={onClose}
       width="medium"
       closeOnBlanket={false}
       footer={
         report ? (
           <Button appearance="primary" onClick={onClose}>
-            Done
+            {t("Done")}
           </Button>
         ) : (
           <>
             <Button appearance="subtle" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button appearance="primary" loading={busy} onClick={run}>
-              Optimise
+              {t("Optimise")}
             </Button>
           </>
         )
@@ -214,55 +215,55 @@ export function OptimizeDialog({ info, onRun, onClose }: { info: DocInfo; onRun:
     >
       {report ? (
         <div style={stack}>
-          <SectionMessage appearance={saved > 0 ? "success" : "information"} title={saved > 0 ? `${bytes(saved)} smaller (${Math.round((saved / Math.max(1, report.sizeBefore)) * 100)} %)` : "Already as small as these settings make it"}>
-            {bytes(report.sizeBefore)} → {bytes(report.sizeAfter)} once saved. Undo brings the original back until you save.
+          <SectionMessage appearance={saved > 0 ? "success" : "information"} title={saved > 0 ? t("{0} smaller ({1} %)", bytes(saved), Math.round((saved / Math.max(1, report.sizeBefore)) * 100)) : t("Already as small as these settings make it")}>
+            {bytes(report.sizeBefore)} → {bytes(report.sizeAfter)} {t("once saved. Undo brings the original back until you save.")}
           </SectionMessage>
           <dl className="props">
-            <dt>Images resampled</dt>
+            <dt>{t("Images resampled")}</dt>
             <dd>
               {report.imagesResampled} of {report.imagesResampled + report.imagesKept}
               {report.imageBytesBefore > 0 && ` · ${bytes(report.imageBytesBefore)} → ${bytes(report.imageBytesAfter)}`}
             </dd>
-            <dt>Duplicates merged</dt>
+            <dt>{t("Duplicates merged")}</dt>
             <dd>
               {report.duplicatesMerged}
               {report.fontsMerged > 0 && ` (${plural(report.fontsMerged, "font object")})`}
             </dd>
-            <dt>Extras removed</dt>
+            <dt>{t("Extras removed")}</dt>
             <dd>{report.extrasRemoved}</dd>
           </dl>
         </div>
       ) : (
         <div style={stack}>
           {info.state.signed && (
-            <SectionMessage appearance="warning" title="This document is signed">
-              Optimising rewrites the file, which invalidates its signatures.
+            <SectionMessage appearance="warning" title={t("This document is signed")}>
+              {t("Optimising rewrites the file, which invalidates its signatures.")}
             </SectionMessage>
           )}
-          <Toggle label="Reduce image resolution" description="Images drawn at a higher resolution are resampled; photographs are stored as JPEG." checked={images} onChange={setImages} />
+          <Toggle label={t("Reduce image resolution")} description={t("Images drawn at a higher resolution are resampled; photographs are stored as JPEG.")} checked={images} onChange={setImages} />
           {images && (
             <>
               <Select
-                label="Resolution"
+                label={t("Resolution")}
                 value={dpi}
                 onChange={setDpi}
                 options={[
-                  { value: "96", label: "96 ppi — screen" },
-                  { value: "150", label: "150 ppi — e-mail and office printing" },
-                  { value: "220", label: "220 ppi — good printing" },
-                  { value: "300", label: "300 ppi — print production" },
+                  { value: "96", label: t("96 ppi — screen") },
+                  { value: "150", label: t("150 ppi — e-mail and office printing") },
+                  { value: "220", label: t("220 ppi — good printing") },
+                  { value: "300", label: t("300 ppi — print production") },
                 ]}
               />
               <label className="field">
-                <span className="field-label">JPEG quality · {quality}</span>
+                <span className="field-label">{t("JPEG quality ·")}{" "}{quality}</span>
                 <input type="range" min={30} max={95} step={5} value={quality} onChange={(e) => setQuality(Number(e.target.value))} />
               </label>
             </>
           )}
-          <Toggle label="Merge duplicate fonts and images" description="A font or picture embedded once per page is kept once." checked={merge} onChange={setMerge} />
-          <Toggle label="Discard thumbnails and private application data" checked={extras} onChange={setExtras} />
-          <Toggle label="Compact file structure" description="Object streams (PDF 1.5). Every current reader opens them; very old ones do not." checked={compact} onChange={setCompact} />
-          {busy && <ProgressBar indeterminate label="Optimising" />}
+          <Toggle label={t("Merge duplicate fonts and images")} description={t("A font or picture embedded once per page is kept once.")} checked={merge} onChange={setMerge} />
+          <Toggle label={t("Discard thumbnails and private application data")} checked={extras} onChange={setExtras} />
+          <Toggle label={t("Compact file structure")} description={t("Object streams (PDF 1.5). Every current reader opens them; very old ones do not.")} checked={compact} onChange={setCompact} />
+          {busy && <ProgressBar indeterminate label={t("Optimising")} />}
         </div>
       )}
     </Modal>
@@ -303,11 +304,11 @@ export function ExportDialog({
   const run = async () => {
     try {
       if (format === "text") {
-        const path = await saveDialog({ defaultPath: `${base}.txt`, filters: [{ name: "Text", extensions: ["txt"] }] });
+        const path = await saveDialog({ defaultPath: t("{0}.txt", base), filters: [{ name: "Text", extensions: ["txt"] }] });
         if (!path) return;
         setProgress(0);
         const n = await api.exportText(docId, list, path);
-        onDone("success", n ? "Text exported" : "No text found", n ? path : "These pages hold no text. Recognise text (OCR) first if they are scans.");
+        onDone("success", n ? t("Text exported") : t("No text found"), n ? path : t("These pages hold no text. Recognise text (OCR) first if they are scans."));
         onClose();
         return;
       }
@@ -319,72 +320,72 @@ export function ExportDialog({
         setProgress(i / list.length);
         const canvas = await renderPage(pdf, list[i], (parseFloat(dpi) || 150) / 72);
         const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, format === "png" ? "image/png" : "image/jpeg", quality / 100));
-        if (!blob) throw new Error(`Page ${list[i] + 1} could not be rendered.`);
+        if (!blob) throw new Error(t("Page {0} could not be rendered.", list[i] + 1));
         const file = `${folder}\\${base} p${String(list[i] + 1).padStart(digits, "0")}.${ext}`;
         await api.writeFile(file, new Uint8Array(await blob.arrayBuffer()));
       }
-      onDone("success", `Exported ${plural(list.length, "page")}`, folder);
+      onDone("success", t("Exported {0}", plural(list.length, "page")), folder);
       onClose();
     } catch (e) {
-      onDone("error", "Export failed", errorText(e));
+      onDone("error", t("Export failed"), errorText(e));
     } finally {
       setProgress(null);
     }
   };
   return (
     <Modal
-      title="Export"
+      title={t("Export")}
       onClose={onClose}
       width="medium"
       closeOnBlanket={false}
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button appearance="primary" iconBefore={format === "text" ? undefined : FolderOpen} loading={progress != null} disabled={!list.length} onClick={run}>
-            Export {plural(list.length, "page")}…
+            {t("Export")}{" "}{plural(list.length, "page")}…
           </Button>
         </>
       }
     >
       <div style={stack}>
         <Segmented<ExportFormat>
-          label="Format"
+          label={t("Format")}
           value={format}
           onChange={setFormat}
           options={[
-            { value: "png", label: "PNG images" },
-            { value: "jpeg", label: "JPEG images" },
-            { value: "text", label: "Plain text" },
+            { value: "png", label: t("PNG images") },
+            { value: "jpeg", label: t("JPEG images") },
+            { value: "text", label: t("Plain text") },
           ]}
         />
         <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
         {format !== "text" && (
           <Select
-            label="Resolution"
+            label={t("Resolution")}
             value={dpi}
             onChange={setDpi}
             options={[
-              { value: "72", label: "72 ppi — as on screen" },
-              { value: "150", label: "150 ppi" },
-              { value: "300", label: "300 ppi — print" },
-              { value: "600", label: "600 ppi" },
+              { value: "72", label: t("72 ppi — as on screen") },
+              { value: "150", label: t("150 ppi") },
+              { value: "300", label: t("300 ppi — print") },
+              { value: "600", label: t("600 ppi") },
             ]}
           />
         )}
         {format === "jpeg" && (
           <label className="field">
-            <span className="field-label">Quality · {quality}</span>
+            <span className="field-label">{t("Quality ·")}{" "}{quality}</span>
             <input type="range" min={40} max={100} step={5} value={quality} onChange={(e) => setQuality(Number(e.target.value))} />
           </label>
         )}
         <p className="is-muted" style={note}>
           {format === "text"
-            ? "Paragraphs in the order the pages draw them, one file, pages separated by a form feed."
-            : "One file per page, named after the document and the page number. Annotations are included as shown."}
+            ? t("Paragraphs in the order the pages draw them, one file, pages separated by a form feed.")
+            : t("One file per page, named after the document and the page number. Annotations are included as shown.")}
         </p>
-        {progress != null && <ProgressBar value={progress} label="Exporting" />}
+        {progress != null && <ProgressBar value={progress} label={t("Exporting")} />}
       </div>
     </Modal>
   );
@@ -464,7 +465,7 @@ export function OcrDialog({
       }
       setProgress({ done: list.length, total: list.length, words });
       if (!out.length) {
-        setError(skipped === list.length ? "Every page in this range already has text. Turn off “Skip pages that already have text” to recognise them again." : "No text was recognised on these pages.");
+        setError(skipped === list.length ? t("Every page in this range already has text. Turn off “Skip pages that already have text” to recognise them again.") : t("No text was recognised on these pages."));
         setProgress(null);
         return;
       }
@@ -477,43 +478,43 @@ export function OcrDialog({
   };
   return (
     <Modal
-      title="Recognise text (OCR)"
+      title={t("Recognise text (OCR)")}
       onClose={onClose}
       width="medium"
       closeOnBlanket={false}
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button appearance="primary" loading={progress != null} disabled={!list.length || !setup?.languages.length} onClick={run}>
-            Recognise {plural(list.length, "page")}
+            {t("Recognise")}{" "}{plural(list.length, "page")}
           </Button>
         </>
       }
     >
       <div style={stack}>
         <p className="is-muted">
-          Scanned pages are pictures of text. Recognition lays the words invisibly over the picture, so they can be searched, selected and copied. The scan itself stays as it is.
+          {t("Scanned pages are pictures of text. Recognition lays the words invisibly over the picture, so they can be searched, selected and copied. The scan itself stays as it is.")}
         </p>
-        {!setup && !error && <Spinner label="Asking Windows for its OCR languages" />}
+        {!setup && !error && <Spinner label={t("Asking Windows for its OCR languages")} />}
         {setup && !setup.languages.length && (
-          <SectionMessage appearance="warning" title="No OCR language is installed">
-            Add one in Windows under Settings › Time &amp; language › Language &amp; region › your language › Language options › Optical character recognition.
+          <SectionMessage appearance="warning" title={t("No OCR language is installed")}>
+            {t("Add one in Windows under Settings › Time & language › Language & region › your language › Language options › Optical character recognition.")}
           </SectionMessage>
         )}
         {setup && setup.languages.length > 0 && (
           <>
-            <Select label="Language of the text" value={lang} onChange={setLang} options={setup.languages.map((l) => ({ value: l.tag, label: l.name }))} helper="Languages come from the OCR packs installed in Windows; recognition runs on this computer." />
+            <Select label={t("Language of the text")} value={lang} onChange={setLang} options={setup.languages.map((l) => ({ value: l.tag, label: l.name }))} helper={t("Languages come from the OCR packs installed in Windows; recognition runs on this computer.")} />
             <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
-            <Toggle label="Skip pages that already have text" checked={skip} onChange={setSkip} />
+            <Toggle label={t("Skip pages that already have text")} checked={skip} onChange={setSkip} />
           </>
         )}
         {progress && (
           <>
-            <ProgressBar value={progress.done / Math.max(1, progress.total)} label="Recognising" />
+            <ProgressBar value={progress.done / Math.max(1, progress.total)} label={t("Recognising")} />
             <p className="is-muted" style={note}>
-              Page {Math.min(progress.done + 1, progress.total)} of {progress.total} · {plural(progress.words, "word")} so far
+              {t("Page")}{" "}{Math.min(progress.done + 1, progress.total)} of {progress.total} · {plural(progress.words, "word")} {t("so far")}
             </p>
           </>
         )}
@@ -568,24 +569,24 @@ export function PdfaDialog({
   };
   return (
     <Modal
-      title="PDF/A — archiving"
+      title={t("PDF/A — archiving")}
       onClose={onClose}
       width="large"
       closeOnBlanket={false}
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Close
+            {t("Close")}
           </Button>
           <Button appearance="primary" loading={busy} disabled={!report || (report.passed && report.claimed === report.target)} onClick={convert}>
-            Convert to {report?.target ?? "PDF/A"}
+            {t("Convert to")}{" "}{report?.target ?? "PDF/A"}
           </Button>
         </>
       }
     >
       <div style={stack}>
         <Segmented
-          label="Standard"
+          label={t("Standard")}
           value={part}
           onChange={(p) => {
             setDone(null);
@@ -598,28 +599,28 @@ export function PdfaDialog({
           ]}
         />
         <p className="is-muted" style={note}>
-          {part === "1" ? "The oldest and strictest: PDF 1.4, no transparency, no layers, no attachments." : part === "2" ? "The usual choice: allows transparency, layers and JPEG 2000." : "Like PDF/A-2, and any file may be attached (used for e-invoices)."}
+          {part === "1" ? t("The oldest and strictest: PDF 1.4, no transparency, no layers, no attachments.") : part === "2" ? t("The usual choice: allows transparency, layers and JPEG 2000.") : t("Like PDF/A-2, and any file may be attached (used for e-invoices).")}
         </p>
         {error && <SectionMessage appearance="danger">{error}</SectionMessage>}
-        {!report && !error && <Spinner label="Checking" />}
+        {!report && !error && <Spinner label={t("Checking")} />}
         {report && (
           <>
             <SectionMessage
               appearance={report.passed ? "success" : fixable === report.issues.length ? "information" : "warning"}
               title={
                 report.passed
-                  ? `Passes all ${report.checked} checks for ${report.target}`
-                  : `${plural(report.issues.length, "rule")} of ${report.checked} not met${fixable ? ` · converting fixes ${fixable}` : ""}`
+                  ? t("Passes all {0} checks for {1}", report.checked, report.target)
+                  : t("{0} of {1} not met{2}", plural(report.issues.length, "rule"), report.checked, fixable ? ` · converting fixes ${fixable}` : "")
               }
             >
-              {report.claimed ? `The document says it is ${report.claimed}. ` : "The document does not claim to be PDF/A. "}
-              These checks cover the rules documents fail in practice; they are not a certified validation (glyph-level font checks and colour management details are left out).
+              {report.claimed ? t("The document says it is {0}. ", report.claimed) : t("The document does not claim to be PDF/A. ")}
+              {t("These checks cover the rules documents fail in practice; they are not a certified validation (glyph-level font checks and colour management details are left out).")}
             </SectionMessage>
             {done && done.length > 0 && (
-              <SectionMessage appearance="success" title="Converted — save to keep it">
+              <SectionMessage appearance="success" title={t("Converted — save to keep it")}>
                 <ul className="plain-list">
                   {done.map((d) => (
-                    <li key={d}>{d}</li>
+                    <li key={d}>{te(d)}</li>
                   ))}
                 </ul>
               </SectionMessage>
@@ -631,12 +632,12 @@ export function PdfaDialog({
                     {i.fixable ? <CircleCheck size={15} className="issue-icon is-fixable" aria-hidden="true" /> : <CircleAlert size={15} className="issue-icon" aria-hidden="true" />}
                     <div>
                       <p className="issue-title">
-                        {i.message}
+                        {te(i.message)}
                         {i.count > 1 && <span className="is-muted"> ×{i.count}</span>}
                       </p>
                       {i.detail && <p className="issue-detail">{i.detail}</p>}
                       <p className="issue-detail">
-                        ISO 19005-{part}, {i.clause} · {i.fixable ? "fixed by converting" : "cannot be fixed automatically"}
+                        {t("ISO 19005-")}{part}, {i.clause} · {i.fixable ? t("fixed by converting") : t("cannot be fixed automatically")}
                       </p>
                     </div>
                   </li>
@@ -671,7 +672,7 @@ function TagRow({ node, depth, selected, onSelect }: { node: TagNode; depth: num
       >
         <span className="tag-caret">{node.children.length ? (open ? "▾" : "▸") : ""}</span>
         <span className={cx("tag-role", missing && "is-missing")}>{node.role || "?"}</span>
-        <span className="tag-text">{figure ? node.alt || node.actualText || "no alternative text" : node.text}</span>
+        <span className="tag-text">{figure ? node.alt || node.actualText || t("no alternative text") : node.text}</span>
         {node.page != null && <span className="tag-page">{node.page + 1}</span>}
       </button>
       {open && node.children.map((c, i) => <TagRow key={c.id || i} node={c} depth={depth + 1} selected={selected} onSelect={onSelect} />)}
@@ -735,37 +736,37 @@ export function AccessibilityDialog({
     if (n.page != null) onNavigate(n.page);
   };
   return (
-    <Modal title="Accessibility" onClose={onClose} width="large" closeOnBlanket={false} footer={<Button onClick={onClose}>Close</Button>}>
+    <Modal title={t("Accessibility")} onClose={onClose} width="large" closeOnBlanket={false} footer={<Button onClick={onClose}>{t("Close")}</Button>}>
       {!info ? (
-        <Spinner label="Reading the structure" />
+        <Spinner label={t("Reading the structure")} />
       ) : (
         <div style={stack}>
           {info.issues.length ? (
-            <SectionMessage appearance="warning" title={`${plural(info.issues.length, "thing")} to look at`}>
+            <SectionMessage appearance="warning" title={t("{0} to look at", plural(info.issues.length, "thing"))}>
               <ul className="plain-list">
                 {info.issues.map((i) => (
-                  <li key={i}>{i}</li>
+                  <li key={i}>{te(i)}</li>
                 ))}
               </ul>
             </SectionMessage>
           ) : (
-            <SectionMessage appearance="success" title="Tagged, with a language, a title and alternative text for every figure" />
+            <SectionMessage appearance="success" title={t("Tagged, with a language, a title and alternative text for every figure")} />
           )}
           <div className="row">
-            <TextField label="Document language" value={lang} placeholder="en-GB, de, fr-CH …" mono onChange={(e) => setLang(e.target.value)} />
-            <Button disabled={lang.trim() === info.lang} onClick={() => run(() => api.setTagDocument(docId, lang.trim(), null), "Language set")}>
-              Set
+            <TextField label={t("Document language")} value={lang} placeholder={t("en-GB, de, fr-CH …")} mono onChange={(e) => setLang(e.target.value)} />
+            <Button disabled={lang.trim() === info.lang} onClick={() => run(() => api.setTagDocument(docId, lang.trim(), null), t("Language set"))}>
+              {t("Set")}
             </Button>
           </div>
           <Toggle
-            label="Show the title instead of the file name"
-            description={info.title ? `“${info.title}” — change it under Document properties in the inspector.` : "The document has no title yet; set one under Document properties in the inspector."}
+            label={t("Show the title instead of the file name")}
+            description={info.title ? t("“{0}” — change it under Document properties in the inspector.", info.title) : t("The document has no title yet; set one under Document properties in the inspector.")}
             checked={info.displayTitle}
             onChange={(v) => run(() => api.setTagDocument(docId, null, v))}
           />
           <Toggle
-            label={`Show the reading order on page ${page + 1}`}
-            description={info.hasTree ? `${plural(order.length, "tagged piece")} of content, numbered in the order a screen reader speaks them.` : "Without tags, readers follow the order the page draws its paragraphs."}
+            label={t("Show the reading order on page {0}", page + 1)}
+            description={info.hasTree ? t("{0} of content, numbered in the order a screen reader speaks them.", plural(order.length, "tagged piece")) : t("Without tags, readers follow the order the page draws its paragraphs.")}
             checked={orderShown}
             onChange={onShowOrder}
           />
@@ -773,12 +774,12 @@ export function AccessibilityDialog({
             <>
               <div className="tag-head">
                 <span className="eyebrow">
-                  Structure · {plural(info.elements, "element")}
-                  {info.truncated ? " (first part shown)" : ""}
+                  {t("Structure ·")}{" "}{plural(info.elements, "element")}
+                  {info.truncated ? t(" (first part shown)") : ""}
                 </span>
                 {firstMissing && (
                   <Button spacing="compact" iconBefore={ImageIcon} onClick={() => pick(firstMissing)}>
-                    Next figure without text
+                    {t("Next figure without text")}
                   </Button>
                 )}
               </div>
@@ -790,19 +791,19 @@ export function AccessibilityDialog({
               {picked && (picked.role === "Figure" || picked.role === "Formula") && (
                 <div className="row">
                   <TextField
-                    label={`Alternative text for this ${picked.role.toLowerCase()}${picked.page != null ? ` on page ${picked.page + 1}` : ""}`}
+                    label={t("Alternative text for this {0}{1}", picked.role.toLowerCase(), picked.page != null ? ` on page ${picked.page + 1}` : "")}
                     value={alt}
-                    placeholder="What the picture shows, in a sentence"
+                    placeholder={t("What the picture shows, in a sentence")}
                     onChange={(e) => setAlt(e.target.value)}
                   />
                   <Button
                     appearance="primary"
                     disabled={!picked.id || alt === picked.alt}
                     onClick={async () => {
-                      if (await run(() => api.setTagElement(docId, picked.id, { alt }), "Alternative text saved")) setPicked({ ...picked, alt });
+                      if (await run(() => api.setTagElement(docId, picked.id, { alt }), t("Alternative text saved"))) setPicked({ ...picked, alt });
                     }}
                   >
-                    Save
+                    {t("Save")}
                   </Button>
                 </div>
               )}
@@ -819,12 +820,12 @@ export function AccessibilityDialog({
 // ---------------------------------------------------------------------------
 
 function verdict(s: SigInfo): { tone: "success" | "warning" | "danger"; icon: typeof ShieldCheck; title: string } {
-  if (s.intact === false) return { tone: "danger", icon: ShieldAlert, title: "Invalid: the document was changed, or the signature is damaged" };
-  if (s.intact == null) return { tone: "warning", icon: ShieldQuestion, title: "Could not be checked" };
-  if (s.trust === "revoked") return { tone: "danger", icon: ShieldAlert, title: "The signer's certificate was revoked" };
-  const what = s.kind === "timestamp" ? "Timestamp" : s.kind === "certification" ? "Certification" : "Signature";
-  if (s.trust === "trusted") return { tone: "success", icon: ShieldCheck, title: `${what} is valid` };
-  return { tone: "warning", icon: ShieldQuestion, title: `${what} is intact, but the signer's identity is not verified` };
+  if (s.intact === false) return { tone: "danger", icon: ShieldAlert, title: t("Invalid: the document was changed, or the signature is damaged") };
+  if (s.intact == null) return { tone: "warning", icon: ShieldQuestion, title: t("Could not be checked") };
+  if (s.trust === "revoked") return { tone: "danger", icon: ShieldAlert, title: t("The signer's certificate was revoked") };
+  const what = s.kind === "timestamp" ? t("Timestamp") : s.kind === "certification" ? t("Certification") : t("Signature");
+  if (s.trust === "trusted") return { tone: "success", icon: ShieldCheck, title: t("{0} is valid", what) };
+  return { tone: "warning", icon: ShieldQuestion, title: t("{0} is intact, but the signer's identity is not verified", what) };
 }
 
 export function SignaturesDialog({
@@ -854,28 +855,28 @@ export function SignaturesDialog({
   }, [docId, revision]);
   return (
     <Modal
-      title="Signatures"
+      title={t("Signatures")}
       onClose={onClose}
       width="large"
       closeOnBlanket={false}
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Close
+            {t("Close")}
           </Button>
           <Button appearance="primary" iconBefore={PenLine} onClick={() => onSign(null)}>
-            Sign…
+            {t("Sign…")}
           </Button>
         </>
       }
     >
       <div style={stack}>
         {error && <SectionMessage appearance="danger">{error}</SectionMessage>}
-        {!data && !error && <Spinner label="Checking signatures" />}
+        {!data && !error && <Spinner label={t("Checking signatures")} />}
         {data && data.unsaved && data.signatures.length > 0 && (
-          <SectionMessage appearance="information">The signatures are checked against the saved file; your unsaved changes are not part of it yet.</SectionMessage>
+          <SectionMessage appearance="information">{t("The signatures are checked against the saved file; your unsaved changes are not part of it yet.")}</SectionMessage>
         )}
-        {data && !data.signatures.length && <p className="is-muted">This document is not signed.</p>}
+        {data && !data.signatures.length && <p className="is-muted">{t("This document is not signed.")}</p>}
         {data?.signatures.map((s) => {
           const v = verdict(s);
           return (
@@ -885,58 +886,58 @@ export function SignaturesDialog({
                 <div>
                   <p className="sig-title">{v.title}</p>
                   <p className="sig-sub">
-                    {s.signer || "Unknown signer"}
+                    {s.signer || t("Unknown signer")}
                     {s.time && ` · ${when(s.time)}`}
                   </p>
                 </div>
                 <span className="spacer" />
                 {s.page != null && (
                   <Button spacing="compact" appearance="subtle" onClick={() => onNavigate(s.page!)}>
-                    Page {s.page + 1}
+                    {t("Page")}{" "}{s.page + 1}
                   </Button>
                 )}
               </header>
               <dl className="props">
-                <dt>Document</dt>
+                <dt>{t("Document")}</dt>
                 <dd>
                   {s.intact === false
-                    ? s.problem
+                    ? te(s.problem)
                     : s.intact == null
-                      ? s.problem
+                      ? te(s.problem)
                       : s.coversWhole
-                        ? "Unchanged since it was signed."
-                        : `Unchanged in the signed part (revision ${s.revision} of ${s.revisions}); content was added to the file afterwards.`}
+                        ? t("Unchanged since it was signed.")
+                        : t("Unchanged in the signed part (revision {0} of {1}); content was added to the file afterwards.", s.revision, s.revisions)}
                 </dd>
-                <dt>Signer</dt>
+                <dt>{t("Signer")}</dt>
                 <dd>
-                  {s.trustDetail || "—"}
-                  {s.issuer && ` Issued by ${s.issuer}.`}
+                  {te(s.trustDetail) || "—"}
+                  {s.issuer && t(" Issued by {0}.", s.issuer)}
                 </dd>
                 {s.subject && (
                   <>
-                    <dt>Certificate</dt>
+                    <dt>{t("Certificate")}</dt>
                     <dd>
                       {s.subject}
-                      {s.validTo && ` · valid ${when(s.validFrom)} – ${when(s.validTo)}`}
+                      {s.validTo && t(" · valid {0} – {1}", when(s.validFrom), when(s.validTo))}
                     </dd>
                   </>
                 )}
                 {s.reason && (
                   <>
-                    <dt>Reason</dt>
+                    <dt>{t("Reason")}</dt>
                     <dd>{s.reason}</dd>
                   </>
                 )}
                 {s.location && (
                   <>
-                    <dt>Location</dt>
+                    <dt>{t("Location")}</dt>
                     <dd>{s.location}</dd>
                   </>
                 )}
-                <dt>Details</dt>
+                <dt>{t("Details")}</dt>
                 <dd>
-                  {[s.field, s.subFilter, s.digest, s.timestamped ? "timestamped by an authority" : "time from the signer's clock"].filter(Boolean).join(" · ")}
-                  {s.digest === "SHA-1" || s.digest === "MD5" ? " — this digest is no longer considered secure" : ""}
+                  {[s.field, s.subFilter, s.digest, s.timestamped ? t("timestamped by an authority") : t("time from the signer's clock")].filter(Boolean).join(" · ")}
+                  {s.digest === "SHA-1" || s.digest === "MD5" ? t(" — this digest is no longer considered secure") : ""}
                 </dd>
               </dl>
             </section>
@@ -944,11 +945,11 @@ export function SignaturesDialog({
         })}
         {data && data.emptyFields.length > 0 && (
           <div>
-            <p className="eyebrow">Empty signature fields</p>
+            <p className="eyebrow">{t("Empty signature fields")}</p>
             <div className="inspector-actions">
               {data.emptyFields.map((f) => (
                 <Button key={f} spacing="compact" iconBefore={PenLine} onClick={() => onSign(f)}>
-                  Sign {f}
+                  {t("Sign")}{" "}{f}
                 </Button>
               ))}
             </div>
@@ -1024,7 +1025,7 @@ export function SignDialog({
   };
   const create = async () => {
     setError(null);
-    const target = await saveDialog({ defaultPath: `${fresh.name || "Digital ID"}.pfx`, filters: [{ name: "Digital ID", extensions: ["pfx"] }] });
+    const target = await saveDialog({ defaultPath: t("{0}.pfx", fresh.name || "Digital ID"), filters: [{ name: "Digital ID", extensions: ["pfx"] }] });
     if (!target) return;
     setBusy(true);
     try {
@@ -1054,30 +1055,30 @@ export function SignDialog({
     setError(null);
     const identity: IdentityRef = source === "store" ? { kind: "store", thumbprint: thumb } : { kind: "file", path, password };
     const p = Math.min(pages, Math.max(1, parseInt(page, 10) || 1)) - 1;
-    const ok = await onSign(identity, { reason, location, contact: "", page: p, rect: rect(), field }, copy);
+    const ok = await onSign(identity, { reason, location, contact: "", page: p, rect: rect(), field, timestampUrl: "" }, copy);
     setBusy(false);
     if (ok) onClose();
   };
-  const freshProblem = !fresh.name.trim() ? "Enter your name." : fresh.password.length < 4 ? "Choose a password of at least four characters." : fresh.password !== fresh.password2 ? "The passwords differ." : null;
+  const freshProblem = !fresh.name.trim() ? t("Enter your name.") : fresh.password.length < 4 ? t("Choose a password of at least four characters.") : fresh.password !== fresh.password2 ? t("The passwords differ.") : null;
 
   return (
     <Modal
-      title={field ? `Sign ${field}` : "Sign document"}
+      title={field ? t("Sign {0}", field) : t("Sign document")}
       onClose={onClose}
       width="medium"
       closeOnBlanket={false}
       footer={
         <>
           <Button appearance="subtle" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           {source === "new" ? (
             <Button appearance="primary" loading={busy} disabled={!!freshProblem} onClick={create}>
-              Create digital ID…
+              {t("Create digital ID…")}
             </Button>
           ) : (
             <Button appearance="primary" iconBefore={PenLine} loading={busy} disabled={!chosen || chosen.expired} onClick={sign}>
-              {copy ? "Sign and save as…" : "Sign and save"}
+              {copy ? t("Sign and save as…") : t("Sign and save")}
             </Button>
           )}
         </>
@@ -1085,36 +1086,36 @@ export function SignDialog({
     >
       <div style={stack}>
         <Segmented
-          label="Digital ID"
+          label={t("Digital ID")}
           value={source}
           onChange={setSource}
           options={[
-            { value: "store", label: "From Windows", icon: BadgeCheck },
-            { value: "file", label: "From a file", icon: FileKey },
-            { value: "new", label: "Create one", icon: Stamp },
+            { value: "store", label: t("From Windows"), icon: BadgeCheck },
+            { value: "file", label: t("From a file"), icon: FileKey },
+            { value: "new", label: t("Create one"), icon: Stamp },
           ]}
         />
         {source === "store" &&
           (ids == null ? (
-            <Spinner label="Reading the Windows certificate store" />
+            <Spinner label={t("Reading the Windows certificate store")} />
           ) : ids.length ? (
             <RadioList
-              label="Certificate"
+              label={t("Certificate")}
               value={thumb}
               onChange={setThumb}
               options={ids.map((i) => ({
                 value: i.thumbprint,
                 label: i.name,
-                description: `${i.selfSigned ? "Self-signed" : `Issued by ${i.issuer}`} · ${i.expired ? "expired" : `valid until ${when(i.validTo)}`}`,
+                description: `${i.selfSigned ? "Self-signed" : t("Issued by {0}", i.issuer)} · ${i.expired ? "expired" : t("valid until {0}", when(i.validTo))}`,
               }))}
             />
           ) : (
-            <p className="is-muted">Windows holds no certificate with a private key for you. Use a .pfx file, plug in your smart card or token, or create a digital ID.</p>
+            <p className="is-muted">{t("Windows holds no certificate with a private key for you. Use a .pfx file, plug in your smart card or token, or create a digital ID.")}</p>
           ))}
         {source === "file" && (
           <>
             <div className="row">
-              <TextField label="Digital ID file (.pfx, .p12)" value={path} readOnly placeholder="Choose a file" />
+              <TextField label={t("Digital ID file (.pfx, .p12)")} value={path} readOnly placeholder={t("Choose a file")} />
               <Button
                 iconBefore={FolderOpen}
                 onClick={async () => {
@@ -1125,77 +1126,77 @@ export function SignDialog({
                   }
                 }}
               >
-                Browse
+                {t("Browse")}
               </Button>
             </div>
             <div className="row">
-              <TextField label="Password" type="password" value={password} error={fileError} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && path && unlock()} />
+              <TextField label={t("Password")} type="password" value={password} error={fileError} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && path && unlock()} />
               <Button disabled={!path} onClick={unlock}>
-                Unlock
+                {t("Unlock")}
               </Button>
             </div>
             {fileId && (
               <SectionMessage appearance={fileId.expired ? "warning" : "success"} title={fileId.name}>
-                {fileId.selfSigned ? "Self-signed" : `Issued by ${fileId.issuer}`} · {fileId.expired ? "expired" : `valid until ${when(fileId.validTo)}`}
+                {fileId.selfSigned ? "Self-signed" : t("Issued by {0}", fileId.issuer)} · {fileId.expired ? "expired" : t("valid until {0}", when(fileId.validTo))}
               </SectionMessage>
             )}
           </>
         )}
         {source === "new" && (
           <>
-            <SectionMessage appearance="information" title="A self-signed digital ID">
-              It proves that a document has not changed since you signed it. It does not prove who you are: readers show it as unverified until the recipient chooses to trust it. For that, use a certificate from a trust service.
+            <SectionMessage appearance="information" title={t("A self-signed digital ID")}>
+              {t("It proves that a document has not changed since you signed it. It does not prove who you are: readers show it as unverified until the recipient chooses to trust it. For that, use a certificate from a trust service.")}
             </SectionMessage>
             <div className="row">
-              <TextField label="Name" value={fresh.name} onChange={(e) => setFresh({ ...fresh, name: e.target.value })} />
-              <TextField label="E-mail" value={fresh.email} onChange={(e) => setFresh({ ...fresh, email: e.target.value })} />
+              <TextField label={t("Name")} value={fresh.name} onChange={(e) => setFresh({ ...fresh, name: e.target.value })} />
+              <TextField label={t("E-mail")} value={fresh.email} onChange={(e) => setFresh({ ...fresh, email: e.target.value })} />
             </div>
             <div className="row">
-              <TextField label="Organisation" value={fresh.organisation} onChange={(e) => setFresh({ ...fresh, organisation: e.target.value })} />
-              <TextField label="Country (2 letters)" value={fresh.country} mono maxLength={2} onChange={(e) => setFresh({ ...fresh, country: e.target.value })} />
-              <TextField label="Valid (years)" value={fresh.years} mono onChange={(e) => setFresh({ ...fresh, years: e.target.value.replace(/\D/g, "") })} />
+              <TextField label={t("Organisation")} value={fresh.organisation} onChange={(e) => setFresh({ ...fresh, organisation: e.target.value })} />
+              <TextField label={t("Country (2 letters)")} value={fresh.country} mono maxLength={2} onChange={(e) => setFresh({ ...fresh, country: e.target.value })} />
+              <TextField label={t("Valid (years)")} value={fresh.years} mono onChange={(e) => setFresh({ ...fresh, years: e.target.value.replace(/\D/g, "") })} />
             </div>
             <div className="row">
-              <TextField label="Password for the file" type="password" autoComplete="new-password" value={fresh.password} onChange={(e) => setFresh({ ...fresh, password: e.target.value })} />
-              <TextField label="Repeat" type="password" autoComplete="new-password" value={fresh.password2} onChange={(e) => setFresh({ ...fresh, password2: e.target.value })} />
+              <TextField label={t("Password for the file")} type="password" autoComplete="new-password" value={fresh.password} onChange={(e) => setFresh({ ...fresh, password: e.target.value })} />
+              <TextField label={t("Repeat")} type="password" autoComplete="new-password" value={fresh.password2} onChange={(e) => setFresh({ ...fresh, password2: e.target.value })} />
             </div>
             <p className="is-muted" style={note}>
-              The ID is saved as a .pfx file you choose; keep it and its password safe. Nothing is installed in Windows.
+              {t("The ID is saved as a .pfx file you choose; keep it and its password safe. Nothing is installed in Windows.")}
             </p>
           </>
         )}
         {source !== "new" && (
           <>
             <div className="row">
-              <TextField label="Reason (optional)" value={reason} placeholder="I approve this document" onChange={(e) => setReason(e.target.value)} />
-              <TextField label="Location (optional)" value={location} onChange={(e) => setLocation(e.target.value)} />
+              <TextField label={t("Reason (optional)")} value={reason} placeholder={t("I approve this document")} onChange={(e) => setReason(e.target.value)} />
+              <TextField label={t("Location (optional)")} value={location} onChange={(e) => setLocation(e.target.value)} />
             </div>
             {!field && (
               <>
-                <Toggle label="Show the signature on a page" description="Your name, the date and the reason in a box. Without it the signature is invisible but just as valid." checked={visible} onChange={setVisible} />
+                <Toggle label={t("Show the signature on a page")} description={t("Your name, the date and the reason in a box. Without it the signature is invisible but just as valid.")} checked={visible} onChange={setVisible} />
                 {visible && (
                   <div className="row">
-                    <TextField label="Page" value={page} mono onChange={(e) => setPage(e.target.value.replace(/\D/g, ""))} />
+                    <TextField label={t("Page")} value={page} mono onChange={(e) => setPage(e.target.value.replace(/\D/g, ""))} />
                     <Select<Corner>
-                      label="Position"
+                      label={t("Position")}
                       value={corner}
                       onChange={setCorner}
                       options={[
-                        { value: "bottom-right", label: "Bottom right" },
-                        { value: "bottom-left", label: "Bottom left" },
-                        { value: "top-right", label: "Top right" },
-                        { value: "top-left", label: "Top left" },
+                        { value: "bottom-right", label: t("Bottom right") },
+                        { value: "bottom-left", label: t("Bottom left") },
+                        { value: "top-right", label: t("Top right") },
+                        { value: "top-left", label: t("Top left") },
                       ]}
                     />
                   </div>
                 )}
               </>
             )}
-            <Toggle label="Save the signed document as a copy" checked={copy} disabled={!hasPath} onChange={setCopy} />
+            <Toggle label={t("Save the signed document as a copy")} checked={copy} disabled={!hasPath} onChange={setCopy} />
             <p className="is-muted" style={note}>
               {signed
-                ? "This document is signed already: the new signature is appended, so the existing ones stay valid."
-                : "Signing saves the document (PAdES, SHA-256). Changes made afterwards are appended and show up as such when the signature is checked."}
+                ? t("This document is signed already: the new signature is appended, so the existing ones stay valid.")
+                : t("Signing saves the document (PAdES, SHA-256). Changes made afterwards are appended and show up as such when the signature is checked.")}
             </p>
           </>
         )}

@@ -32,6 +32,7 @@ import { previewStack } from "../lib/fontPreview";
 import { fontLabel, plural, rgbToHex } from "../lib/format";
 import type { Selection } from "./Viewer";
 import { cx } from "../lib/utils";
+import { t, te } from "../lib/i18n";
 
 export type SideTab = "pages" | "outline" | "fonts" | "comments" | "history";
 
@@ -89,10 +90,10 @@ export function Sidebar({
 }) {
   const stamps = usePageStamps(revision, changed, pdf.numPages);
   return (
-    <aside className="panel side" aria-label="Document sidebar">
+    <aside className="panel side" aria-label={t("Document sidebar")}>
       <div className="side-head">
         <Segmented<SideTab>
-          label="Sidebar"
+          label={t("Sidebar")}
           value={tab}
           onChange={onTab}
           options={[
@@ -143,14 +144,14 @@ export function Sidebar({
 function HistoryPanel({ history, future, onGo }: { history: string[]; future: string[]; onGo: (steps: number) => void }) {
   const current = history.length;
   const rows = [
-    { label: "Opened", step: 0 },
+    { label: t("Opened"), step: 0 },
     ...history.map((label, i) => ({ label, step: i + 1 })),
     ...future.map((label, i) => ({ label, step: current + i + 1 })),
   ];
   return (
     <div className="side-body">
       <span className="eyebrow" style={{ display: "block", marginBottom: 8 }}>
-        {history.length ? plural(history.length, "change") : "No changes yet"}
+        {history.length ? plural(history.length, "change") : t("No changes yet")}
       </span>
       <div className="history">
         {rows.map((r) => (
@@ -159,15 +160,15 @@ function HistoryPanel({ history, future, onGo }: { history: string[]; future: st
             type="button"
             className={cx("history-row", r.step === current && "is-current", r.step > current && "is-undone")}
             onClick={() => r.step !== current && onGo(r.step - current)}
-            data-tooltip={r.step === current ? "Current state" : r.step < current ? "Go back to this step" : "Redo up to this step"}
+            data-tooltip={r.step === current ? t("Current state") : r.step < current ? t("Go back to this step") : t("Redo up to this step")}
           >
             <CircleDot size={12} aria-hidden="true" className="history-dot" />
-            <span className="history-label">{r.label}</span>
+            <span className="history-label">{te(r.label)}</span>
           </button>
         ))}
       </div>
       <p className="is-muted" style={{ fontSize: 12, marginTop: 12 }}>
-        Click a step to go back to it. Steps after it stay available until you make a new change.
+        {t("Click a step to go back to it. Steps after it stay available until you make a new change.")}
       </p>
     </div>
   );
@@ -279,22 +280,22 @@ function PagesPanel({
     e.preventDefault();
     const pages = selected.includes(i) ? selected : [i];
     if (!selected.includes(i)) onSelectPages([i]);
-    const label = pages.length > 1 ? `${pages.length} pages` : `page ${i + 1}`;
+    const label = pages.length > 1 ? t("{0} pages", pages.length) : t("page {0}", i + 1);
     onMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
         { type: "heading", label: label.charAt(0).toUpperCase() + label.slice(1) },
-        { label: "Rotate right", icon: RotateCw, onSelect: () => onPageAction("rotate-right", pages) },
-        { label: "Rotate left", icon: RotateCcw, onSelect: () => onPageAction("rotate-left", pages) },
-        { label: "Duplicate", icon: Copy, disabled: pages.length > 1, onSelect: () => onPageAction("duplicate", pages) },
+        { label: t("Rotate right"), icon: RotateCw, onSelect: () => onPageAction("rotate-right", pages) },
+        { label: t("Rotate left"), icon: RotateCcw, onSelect: () => onPageAction("rotate-left", pages) },
+        { label: t("Duplicate"), icon: Copy, disabled: pages.length > 1, onSelect: () => onPageAction("duplicate", pages) },
         { type: "separator" },
-        { label: "Insert blank page before", icon: FilePlus2, onSelect: () => onPageAction("blank-before", pages) },
-        { label: "Insert blank page after", icon: FilePlus2, onSelect: () => onPageAction("blank-after", pages) },
-        { label: "Insert pages from PDF…", icon: FileInput, onSelect: () => onPageAction("insert-file", pages) },
-        { label: "Extract to new PDF…", icon: FileDown, onSelect: () => onPageAction("extract", pages) },
+        { label: t("Insert blank page before"), icon: FilePlus2, onSelect: () => onPageAction("blank-before", pages) },
+        { label: t("Insert blank page after"), icon: FilePlus2, onSelect: () => onPageAction("blank-after", pages) },
+        { label: t("Insert pages from PDF…"), icon: FileInput, onSelect: () => onPageAction("insert-file", pages) },
+        { label: t("Extract to new PDF…"), icon: FileDown, onSelect: () => onPageAction("extract", pages) },
         { type: "separator" },
-        { label: `Delete ${label}`, icon: Trash2, danger: true, shortcut: "Del", onSelect: () => onPageAction("delete", pages) },
+        { label: t("Delete {0}", label), icon: Trash2, danger: true, shortcut: "Del", onSelect: () => onPageAction("delete", pages) },
       ],
     });
   };
@@ -315,13 +316,13 @@ function PagesPanel({
     <>
       <div className="side-head" style={{ paddingTop: 0 }}>
         <span className="eyebrow" style={{ flex: 1 }}>
-          {selected.length > 1 ? `${selected.length} selected` : plural(n, "page")}
+          {selected.length > 1 ? t("{0} selected", selected.length) : plural(n, "page")}
         </span>
-        <IconButton icon={RotateCcw} label="Rotate left" spacing="compact" onClick={() => onPageAction("rotate-left", targets)} />
-        <IconButton icon={RotateCw} label="Rotate right" spacing="compact" onClick={() => onPageAction("rotate-right", targets)} />
-        <IconButton icon={FilePlus2} label="Insert blank page after" spacing="compact" onClick={() => onPageAction("blank-after", targets)} />
-        <IconButton icon={FileInput} label="Insert pages from PDF…" spacing="compact" onClick={() => onPageAction("insert-file", targets)} />
-        <IconButton icon={Trash2} label="Delete pages" spacing="compact" onClick={() => onPageAction("delete", targets)} />
+        <IconButton icon={RotateCcw} label={t("Rotate left")} spacing="compact" onClick={() => onPageAction("rotate-left", targets)} />
+        <IconButton icon={RotateCw} label={t("Rotate right")} spacing="compact" onClick={() => onPageAction("rotate-right", targets)} />
+        <IconButton icon={FilePlus2} label={t("Insert blank page after")} spacing="compact" onClick={() => onPageAction("blank-after", targets)} />
+        <IconButton icon={FileInput} label={t("Insert pages from PDF…")} spacing="compact" onClick={() => onPageAction("insert-file", targets)} />
+        <IconButton icon={Trash2} label={t("Delete pages")} spacing="compact" onClick={() => onPageAction("delete", targets)} />
       </div>
       <div className="side-body" ref={listRef}>
         <div className={cx("thumbs", n === 1 && "is-single")} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
@@ -438,7 +439,7 @@ function BookmarkRow({
       >
         <span
           role={has ? "button" : undefined}
-          aria-label={has ? (item.open ? "Collapse" : "Expand") : undefined}
+          aria-label={has ? (item.open ? t("Collapse") : t("Expand")) : undefined}
           onClick={(e) => {
             if (!has) return;
             e.stopPropagation();
@@ -463,7 +464,7 @@ function BookmarkRow({
             onBlur={() => onRename(path, draft.trim() && draft !== item.title ? draft : null)}
           />
         ) : (
-          <span className="bookmark-title">{item.title || "Untitled"}</span>
+          <span className="bookmark-title">{item.title || t("Untitled")}</span>
         )}
         {item.page != null && <span className="bookmark-page">{item.page + 1}</span>}
       </div>
@@ -523,7 +524,7 @@ function BookmarksPanel({
 
   const add = () => {
     const next = clone(items ?? []);
-    const bm: Bookmark = { title: `Page ${page + 1}`, page, open: false, children: [] };
+    const bm: Bookmark = { title: t("Page {0}", page + 1), page, open: false, children: [] };
     let path: Path;
     if (selected && at(next, selected)) {
       const [list, i] = parentOf(next, selected);
@@ -594,22 +595,22 @@ function BookmarksPanel({
     <>
       <div className="side-head" style={{ paddingTop: 0 }}>
         <span className="eyebrow" style={{ flex: 1 }}>
-          Bookmarks
+          {t("Bookmarks")}
         </span>
-        <IconButton icon={BookmarkPlus} label={`Add bookmark to page ${page + 1}`} spacing="compact" onClick={add} />
-        <IconButton icon={ArrowUp} label="Move up" spacing="compact" disabled={!sel} onClick={() => move(-1)} />
-        <IconButton icon={ArrowDown} label="Move down" spacing="compact" disabled={!sel} onClick={() => move(1)} />
-        <IconButton icon={IndentIncrease} label="Make it part of the bookmark above" spacing="compact" disabled={!sel} onClick={indent} />
-        <IconButton icon={IndentDecrease} label="Move it out one level" spacing="compact" disabled={!sel || (selected?.length ?? 0) < 2} onClick={outdent} />
-        <IconButton icon={Crosshair} label={`Point it at page ${page + 1}`} spacing="compact" disabled={!sel} onClick={setTarget} />
-        <IconButton icon={Trash2} label="Delete bookmark" spacing="compact" disabled={!sel} onClick={remove} />
+        <IconButton icon={BookmarkPlus} label={t("Add bookmark to page {0}", page + 1)} spacing="compact" onClick={add} />
+        <IconButton icon={ArrowUp} label={t("Move up")} spacing="compact" disabled={!sel} onClick={() => move(-1)} />
+        <IconButton icon={ArrowDown} label={t("Move down")} spacing="compact" disabled={!sel} onClick={() => move(1)} />
+        <IconButton icon={IndentIncrease} label={t("Make it part of the bookmark above")} spacing="compact" disabled={!sel} onClick={indent} />
+        <IconButton icon={IndentDecrease} label={t("Move it out one level")} spacing="compact" disabled={!sel || (selected?.length ?? 0) < 2} onClick={outdent} />
+        <IconButton icon={Crosshair} label={t("Point it at page {0}", page + 1)} spacing="compact" disabled={!sel} onClick={setTarget} />
+        <IconButton icon={Trash2} label={t("Delete bookmark")} spacing="compact" disabled={!sel} onClick={remove} />
       </div>
-      <div className="side-body" role="tree" aria-label="Bookmarks">
+      <div className="side-body" role="tree" aria-label={t("Bookmarks")}>
         {items == null ? (
           <Spinner />
         ) : items.length === 0 ? (
-          <EmptyState icon={BookOpen} title="No bookmarks" compact>
-            Add one for the current page; double-click a bookmark to rename it.
+          <EmptyState icon={BookOpen} title={t("No bookmarks")} compact>
+            {t("Add one for the current page; double-click a bookmark to rename it.")}
           </EmptyState>
         ) : (
           items.map((it, i) => (
@@ -652,18 +653,18 @@ function BookmarksPanel({
 // ---------------------------------------------------------------------------
 
 function editability(f: FontSummary): string {
-  if (!f.editable) return "Drawn with PDF operators (Type 3); not editable yet.";
-  if (f.added) return `Embedded from ${f.systemMatch ?? "an installed font"} by Inq Studio; it grows as edits need more characters.`;
-  if (!f.embedded) return "Not embedded: readers draw it with their own copy. Edits use the same encoding.";
+  if (!f.editable) return t("Drawn with PDF operators (Type 3); not editable yet.");
+  if (f.added) return t("Embedded from {0} by Inq Studio; it grows as edits need more characters.", f.systemMatch ?? "an installed font");
+  if (!f.embedded) return t("Not embedded: readers draw it with their own copy. Edits use the same encoding.");
   if (f.subset) {
     const extra = f.extendable
-      ? "more come from its embedded program"
+      ? t("more come from its embedded program")
       : f.systemMatch
-        ? `others come from ${f.systemMatch} installed here`
-        : "others are set in a substitute font";
-    return `Subset with ${plural(f.glyphs, "character")}; ${extra}.`;
+        ? t("others come from {0} installed here", f.systemMatch)
+        : t("others are set in a substitute font");
+    return t("Subset with {0}; {1}.", plural(f.glyphs, "character"), extra);
   }
-  return "Fully embedded: edits can use any character it has.";
+  return t("Fully embedded: edits can use any character it has.");
 }
 
 function FontCard({ docId, f, active, onNavigate }: { docId: number; f: FontSummary; active: boolean; onNavigate: (p: number) => void }) {
@@ -677,7 +678,7 @@ function FontCard({ docId, f, active, onNavigate }: { docId: number; f: FontSumm
   }, [docId, f]);
   const sample = useMemo(() => {
     const letters = [...f.charset].filter((c) => /\p{L}|\p{N}/u.test(c)).join("");
-    return letters.length > 6 ? letters.slice(0, 40) : "Aa Bb Cc 123";
+    return letters.length > 6 ? letters.slice(0, 40) : t("Aa Bb Cc 123");
   }, [f.charset]);
   return (
     <div className={cx("font-card", active && "is-active")}>
@@ -695,24 +696,24 @@ function FontCard({ docId, f, active, onNavigate }: { docId: number; f: FontSumm
           fontWeight: f.bold ? 700 : 400,
           fontStyle: f.italic ? "italic" : undefined,
         }}
-        data-tooltip={f.previewable ? "Drawn with the font embedded in this PDF" : "Approximated with an installed font"}
+        data-tooltip={f.previewable ? t("Drawn with the font embedded in this PDF") : t("Approximated with an installed font")}
       >
         {sample}
       </div>
       <div className="font-tags">
-        {f.embedded ? <Lozenge appearance="success">embedded</Lozenge> : <Lozenge appearance="warning">not embedded</Lozenge>}
+        {f.embedded ? <Lozenge appearance="success">embedded</Lozenge> : <Lozenge appearance="warning">{t("not embedded")}</Lozenge>}
         {f.subset && <Lozenge appearance="information">subset</Lozenge>}
         {f.systemMatch && <Lozenge appearance="discovery">installed</Lozenge>}
-        {f.added && <Lozenge appearance="information">added by Inq</Lozenge>}
-        {!f.hasToUnicode && f.embedded && <Lozenge appearance="warning">no unicode map</Lozenge>}
+        {f.added && <Lozenge appearance="information">{t("added by Inq")}</Lozenge>}
+        {!f.hasToUnicode && f.embedded && <Lozenge appearance="warning">{t("no unicode map")}</Lozenge>}
       </div>
       <p className="font-meta" style={{ display: "block" }}>
         {editability(f)}
       </p>
       <dl className="font-meta">
-        <dt>Encoding</dt>
+        <dt>{t("Encoding")}</dt>
         <dd>{f.encoding || "—"}</dd>
-        <dt>Pages</dt>
+        <dt>{t("Pages")}</dt>
         <dd>
           {f.pages.slice(0, 8).map((p, i) => (
             <span key={p}>
@@ -745,8 +746,8 @@ function FontsPanel({
       {fonts == null ? (
         <Spinner />
       ) : fonts.length === 0 ? (
-        <EmptyState icon={Type} title="No fonts" compact>
-          This document has no text drawn with fonts, so it may be a scan.
+        <EmptyState icon={Type} title={t("No fonts")} compact>
+          {t("This document has no text drawn with fonts, so it may be a scan.")}
         </EmptyState>
       ) : (
         <>
@@ -767,19 +768,19 @@ function FontsPanel({
 // ---------------------------------------------------------------------------
 
 const ANNOT_NAMES: Record<string, string> = {
-  Text: "Note",
-  Highlight: "Highlight",
-  Underline: "Underline",
+  Text: t("Note"),
+  Highlight: t("Highlight"),
+  Underline: t("Underline"),
   StrikeOut: "Strike-out",
-  Squiggly: "Squiggly",
-  Ink: "Drawing",
-  Square: "Rectangle",
-  Circle: "Ellipse",
-  FreeText: "Text box",
-  Line: "Line",
-  Stamp: "Stamp",
+  Squiggly: t("Squiggly"),
+  Ink: t("Drawing"),
+  Square: t("Rectangle"),
+  Circle: t("Ellipse"),
+  FreeText: t("Text box"),
+  Line: t("Line"),
+  Stamp: t("Stamp"),
   Link: "Link",
-  Widget: "Form field",
+  Widget: t("Form field"),
 };
 
 function CommentsPanel({
@@ -820,8 +821,8 @@ function CommentsPanel({
       {items == null ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <EmptyState icon={MessageSquare} title="No comments" compact>
-          Highlights, notes and drawings you add show up here.
+        <EmptyState icon={MessageSquare} title={t("No comments")} compact>
+          {t("Highlights, notes and drawings you add show up here.")}
         </EmptyState>
       ) : (
         items.map(({ page, a }) => {
@@ -846,7 +847,7 @@ function CommentsPanel({
               {a.removable && (
                 <IconButton
                   icon={Trash2}
-                  label="Delete"
+                  label={t("Delete")}
                   spacing="compact"
                   onClick={(e) => {
                     e.stopPropagation();

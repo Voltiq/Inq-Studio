@@ -6,6 +6,7 @@ import {
 } from "react";
 import { Check, CircleAlert, Minus, X, type LucideIcon } from "lucide-react";
 import { cx } from "../../lib/utils";
+import { t } from "../../lib/i18n";
 
 interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
   label?: string;
@@ -36,7 +37,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
 ) {
   const autoId = useId();
   const inputId = id ?? autoId;
-  const helperId = `${inputId}-helper`;
+  const helperId = t("{0}-helper", inputId);
   const describedBy = error || helper ? helperId : undefined;
   return (
     <div className={cx("field", containerClassName)}>

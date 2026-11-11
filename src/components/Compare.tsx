@@ -8,6 +8,7 @@ import type { PDFDocumentProxy } from "../lib/pdf";
 import { pixelDiff, renderPage } from "../lib/raster";
 import { plural } from "../lib/format";
 import { cx } from "../lib/utils";
+import { t } from "../lib/i18n";
 
 export interface CompareSide {
   name: string;
@@ -71,7 +72,7 @@ function Sheet({
   if (page == null) {
     return (
       <div className="compare-sheet is-absent" style={{ width }}>
-        <span>{kind === "removed" ? "Not in this document" : "Not in this document"}</span>
+        <span>{kind === "removed" ? t("Not in this document") : t("Not in this document")}</span>
       </div>
     );
   }
@@ -103,7 +104,7 @@ function Row({ pair, a, b, width, pixels, active, onVisible }: { pair: PagePair;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && setSeen(true), { rootMargin: "600px 0px" });
+    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && setSeen(true), { rootMargin: t("600px 0px") });
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -113,18 +114,18 @@ function Row({ pair, a, b, width, pixels, active, onVisible }: { pair: PagePair;
     <div ref={ref} className={cx("compare-row", active && "is-active")}>
       <div className="compare-row-head">
         <span>
-          {pair.a != null ? `Page ${pair.a + 1}` : "—"} <ArrowLeftRight size={12} aria-hidden="true" /> {pair.b != null ? `Page ${pair.b + 1}` : "—"}
+          {pair.a != null ? t("Page {0}", pair.a + 1) : "—"} <ArrowLeftRight size={12} aria-hidden="true" /> {pair.b != null ? t("Page {0}", pair.b + 1) : "—"}
         </span>
         <span className={cx("compare-row-note", changed && "is-changed")}>
           {pair.a == null
-            ? "page added"
+            ? t("page added")
             : pair.b == null
-              ? "page removed"
+              ? t("page removed")
               : changed
-                ? `${plural(pair.wordsRemoved, "word")} removed, ${pair.wordsAdded} added`
+                ? t("{0} removed, {1} added", plural(pair.wordsRemoved, "word"), pair.wordsAdded)
                 : share != null && share > 0.0005
-                  ? `same text, ${(share * 100).toFixed(share < 0.01 ? 2 : 1)} % of the picture differs`
-                  : "same text"}
+                  ? t("same text, {0} % of the picture differs", (share * 100).toFixed(share < 0.01 ? 2 : 1))
+                  : t("same text")}
         </span>
       </div>
       <div className="compare-pair">
@@ -162,36 +163,36 @@ export function CompareView({ a, b, result, onSwap, onClose }: { a: CompareSide;
     rows.current.get(pair)?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
   return (
-    <div className="compare" role="dialog" aria-label="Compare documents">
+    <div className="compare" role="dialog" aria-label={t("Compare documents")}>
       <header className="compare-bar">
         <strong className="compare-name is-removed" data-tooltip={a.name} data-tooltip-overflow>
           {a.name}
         </strong>
-        <IconButton icon={ArrowLeftRight} label="Swap sides" spacing="compact" onClick={onSwap} />
+        <IconButton icon={ArrowLeftRight} label={t("Swap sides")} spacing="compact" onClick={onSwap} />
         <strong className="compare-name is-added" data-tooltip={b.name} data-tooltip-overflow>
           {b.name}
         </strong>
         <span className="spacer" />
-        <Toggle label="Only changed pages" checked={onlyChanged} onChange={setOnlyChanged} />
-        <Toggle label="Mark differences in the picture" checked={pixels} onChange={setPixels} />
-        <IconButton icon={Minus} label="Smaller" spacing="compact" onClick={() => setWidth((w) => Math.max(280, w - 80))} />
-        <IconButton icon={Plus} label="Larger" spacing="compact" onClick={() => setWidth((w) => Math.min(1100, w + 80))} />
+        <Toggle label={t("Only changed pages")} checked={onlyChanged} onChange={setOnlyChanged} />
+        <Toggle label={t("Mark differences in the picture")} checked={pixels} onChange={setPixels} />
+        <IconButton icon={Minus} label={t("Smaller")} spacing="compact" onClick={() => setWidth((w) => Math.max(280, w - 80))} />
+        <IconButton icon={Plus} label={t("Larger")} spacing="compact" onClick={() => setWidth((w) => Math.min(1100, w + 80))} />
         <Button iconBefore={X} onClick={onClose}>
-          Close
+          {t("Close")}
         </Button>
       </header>
       <div className="compare-body">
         <aside className="compare-list">
           {!result ? (
-            <Spinner label="Comparing" />
+            <Spinner label={t("Comparing")} />
           ) : (
             <>
               <p className="compare-summary">
                 {result.sameText
-                  ? "The text of both documents is the same."
-                  : `${plural(result.wordsRemoved, "word")} removed, ${result.wordsAdded} added${result.pagesAdded + result.pagesRemoved ? `; ${plural(result.pagesAdded, "page")} added, ${result.pagesRemoved} removed` : ""}.`}
+                  ? t("The text of both documents is the same.")
+                  : t("{0} removed, {1} added{2}.", plural(result.wordsRemoved, "word"), result.wordsAdded, result.pagesAdded + result.pagesRemoved ? `; ${plural(result.pagesAdded, "page")} added, ${result.pagesRemoved} removed` : "")}
               </p>
-              {result.sameText && <p className="is-muted">Turn on “Mark differences in the picture” to compare images and graphics.</p>}
+              {result.sameText && <p className="is-muted">{t("Turn on “Mark differences in the picture” to compare images and graphics.")}</p>}
               {result.changes.map((c, i) => (
                 <button key={i} type="button" className={cx("compare-change", active === c.pair && "is-active")} onClick={() => go(c.pair)}>
                   <span className={cx("compare-kind", `is-${c.kind}`)}>{c.kind}</span>
@@ -218,7 +219,7 @@ export function CompareView({ a, b, result, onSwap, onClose }: { a: CompareSide;
               }}
             />
           ))}
-          {result && !shown.length && <p className="is-muted" style={{ padding: 24 }}>No page differs in its text.</p>}
+          {result && !shown.length && <p className="is-muted" style={{ padding: 24 }}>{t("No page differs in its text.")}</p>}
         </div>
       </div>
     </div>

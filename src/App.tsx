@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { findUpdateQuietly } from "./lib/updates";
 import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { DocTabs, SHAPE_TOOLS, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, type Toast } from "./components/Chrome";
 import { PageMarksDialog, ResizeDialog, SplitDialog, type MarksTab } from "./components/ToolDialogs";
@@ -41,6 +44,7 @@ import { applyTheme, watchSystemTheme, type Theme } from "./lib/theme";
 import { length, paperName, plural } from "./lib/format";
 import type { ShapeTool, Tool, ZoomMode } from "./lib/types";
 import { isEditableTarget, MOD } from "./lib/utils";
+import { t } from "./lib/i18n";
 
 interface DocView {
   info: DocInfo;
@@ -96,7 +100,7 @@ export default function App() {
   const textStyleTouched = useRef(false);
   const [findOpen, setFindOpen] = useState(false);
   const [shape, setShape] = useState<ShapeTool>("rect");
-  const [toolOptions, setToolOptions] = useState<ToolOptions>({ stampLabel: "Approved", fill: null, textSize: 12 });
+  const [toolOptions, setToolOptions] = useState<ToolOptions>({ stampLabel: t("Approved"), fill: null, textSize: 12 });
   /** Redaction marks waiting to be applied: document → page → rectangles. */
   const [redactions, setRedactions] = useState<Record<number, Record<number, Rect[]>>>({});
   const [redactFill, setRedactFill] = useState<"black" | "white" | "none">("black");
@@ -161,7 +165,7 @@ export default function App() {
   }, [settings.theme]);
 
   useEffect(() => {
-    const title = active ? `${active.info.state.dirty ? "• " : ""}${active.info.state.name} — Inq Studio` : "Inq Studio";
+    const title = active ? t("{0}{1} — Inq Studio", active.info.state.dirty ? "• " : "", active.info.state.name) : t("Inq Studio");
     document.title = title;
     getCurrentWindow().setTitle(title).catch(() => {});
   }, [active?.info.state.name, active?.info.state.dirty, active]);
@@ -202,7 +206,7 @@ export default function App() {
         const msg = errorText(e);
         if (msg === "PASSWORD_REQUIRED") setPassword({ path, wrong: !!pw });
         else {
-          toast("error", "Could not open the file", msg);
+          toast("error", t("Could not open the file"), msg);
           if (/not find|cannot find|No such file|os error 2/i.test(msg)) setRecent(forgetRecent(path));
         }
       } finally {
@@ -220,13 +224,52 @@ export default function App() {
   }, [openPath]);
 
   // Files from "Open with" and drag and drop.
+  const started = useRef(false);
   useEffect(() => {
+    // Development mode runs effects twice; the files must open once.
+    if (started.current) return;
+    started.current = true;
     api
       .startupFiles()
       .then(async (files) => {
         for (const f of files) await openPath(f);
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A second start (double-click on another PDF) hands its files to this window.
+  useEffect(() => {
+    const un = listen<string[]>("open-files", async (event) => {
+      for (const f of event.payload) await openPath(f);
+    });
+    return () => {
+      un.then((f) => f()).catch(() => {});
+    };
+  }, [openPath]);
+
+  // Once at start: a newer version, and a crash report from last time.
+  useEffect(() => {
+    findUpdateQuietly().then((update) => {
+      if (update) toast("info", t("Inq Studio {0} is available", update.version), t("Install it from Settings › Updates."));
+    });
+    api
+      .logInfo()
+      .then((l) => {
+        if (!l.newCrashes.length) return;
+        toast("warning", t("Inq Studio closed unexpectedly last time"), t("A crash report was saved; it opens in its folder now. Sending it along with a bug report helps to fix the cause."));
+        revealItemInDir(l.newCrashes[l.newCrashes.length - 1]).catch(() => {});
+        api.crashesSeen().catch(() => {});
+      })
+      .catch(() => {});
+    const onError = (e: ErrorEvent) => api.log("error", `window: ${e.message} (${e.filename}:${e.lineno})`);
+    const onRejection = (e: PromiseRejectionEvent) => api.log("error", `unhandled: ${errorText(e.reason)}`);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -238,7 +281,7 @@ export default function App() {
       else if (p.type === "drop") {
         setDropping(false);
         const pdfs = p.paths.filter((x) => x.toLowerCase().endsWith(".pdf"));
-        if (!pdfs.length) toast("warning", "Only PDF files can be opened");
+        if (!pdfs.length) toast("warning", t("Only PDF files can be opened"));
         for (const f of pdfs) await openPath(f);
       }
     });
@@ -279,11 +322,12 @@ export default function App() {
         await refresh(id, state);
         if (notice) {
           const kind = /instead|substitute|not installed/i.test(notice) ? "warning" : "info";
-          toast(kind, kind === "warning" ? "Font substituted" : "Done", notice);
+          toast(kind, kind === "warning" ? t("Font substituted") : t("Done"), notice);
         } else if (success) toast("success", success);
         return true;
       } catch (e) {
-        toast("error", "That didn’t work", errorText(e));
+        toast("error", t("That didn’t work"), errorText(e));
+        api.log("warn", `command failed: ${errorText(e)}`);
         return false;
       } finally {
         setBusy(false);
@@ -387,10 +431,10 @@ export default function App() {
         updateDoc(docId, (x) => ({ ...x, info: { ...x.info, state } }));
         api.info(docId).then((info) => updateDoc(docId, (x) => ({ ...x, info }))).catch(() => {});
         setRecent(rememberRecent({ path, name: state.name, pages: state.pages }));
-        toast("success", "Saved", state.name);
+        toast("success", t("Saved"), state.name);
         return true;
       } catch (e) {
-        toast("error", "Saving failed", errorText(e));
+        toast("error", t("Saving failed"), errorText(e));
         return false;
       }
     },
@@ -408,10 +452,10 @@ export default function App() {
         updateDoc(docId, (x) => ({ ...x, info: { ...x.info, state } }));
         api.info(docId).then((info) => updateDoc(docId, (x) => ({ ...x, info }))).catch(() => {});
         const incremental = mode === "incremental" || (mode === "auto" && d.info.state.signed);
-        toast("success", "Saved", incremental ? `${state.name}: changes appended, signatures kept` : state.name);
+        toast("success", t("Saved"), incremental ? t("{0}: changes appended, signatures kept", state.name) : state.name);
         return true;
       } catch (e) {
-        toast("error", "Saving failed", errorText(e));
+        toast("error", t("Saving failed"), errorText(e));
         return false;
       }
     },
@@ -514,7 +558,7 @@ export default function App() {
         const d = docsRef.current.find((x) => x.info.state.id === id);
         const all = Array.from({ length: d?.info.state.pages ?? 0 }, (_, i) => i);
         const pages = scope === "page" ? [page] : scope === "all" ? all : d?.selectedPages.length ? d.selectedPages : [page];
-        return run(id, () => api.crop(id, pages, area), `Cropped ${pages.length === 1 ? "the page" : `${pages.length} pages`}`);
+        return run(id, () => api.crop(id, pages, area), t("Cropped {0}", pages.length === 1 ? "the page" : `${pages.length} pages`));
       },
     }),
     [id, run],
@@ -537,7 +581,7 @@ export default function App() {
     if (id == null || selection?.kind !== "image") return;
     const { page, image } = selection;
     setSelection(null);
-    run(id, () => api.deleteImage(id, page, image.index), "Image deleted");
+    run(id, () => api.deleteImage(id, page, image.index), t("Image deleted"));
   }, [id, selection, run]);
 
   const replaceImage = useCallback(async () => {
@@ -546,7 +590,7 @@ export default function App() {
     const path = await openDialog({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }] }).catch(() => null);
     if (typeof path !== "string") return;
     setSelection(null);
-    run(id, () => api.replaceImage(id, page, image.index, path), "Image replaced");
+    run(id, () => api.replaceImage(id, page, image.index, path), t("Image replaced"));
   }, [id, selection, run]);
 
   const extractImage = useCallback(async () => {
@@ -554,13 +598,13 @@ export default function App() {
     const { page, image } = selection;
     const base = active.info.state.name.replace(/\.pdf$/i, "");
     const ext = image.filter === "DCTDecode" && !image.hasAlpha ? "jpg" : "png";
-    const path = await saveDialog({ defaultPath: `${base} p${page + 1} image ${image.index + 1}.${ext}` }).catch(() => null);
+    const path = await saveDialog({ defaultPath: t("{0} p{1} image {2}.{3}", base, page + 1, image.index + 1, ext) }).catch(() => null);
     if (!path) return;
     try {
       const written = await api.extractImage(id, page, image.index, path);
-      toast("success", "Image saved", written);
+      toast("success", t("Image saved"), written);
     } catch (e) {
-      toast("error", "Saving the image failed", errorText(e));
+      toast("error", t("Saving the image failed"), errorText(e));
     }
   }, [id, selection, active, toast]);
 
@@ -573,7 +617,7 @@ export default function App() {
       try {
         const found = await api.find(id, query);
         if (!found.length) {
-          toast("info", "Not found", `“${query}” does not appear in the text of this document.`);
+          toast("info", t("Not found"), t("“{0}” does not appear in the text of this document.", query));
           return;
         }
         setRedactions((all) => {
@@ -588,11 +632,11 @@ export default function App() {
             n += rects.length;
             cur[f.page] = [...(cur[f.page] ?? []), ...rects];
           }
-          toast("success", `Marked ${n} occurrence${n === 1 ? "" : "s"}`, "Check the marks, then apply them in the inspector.");
+          toast("success", t("Marked {0} occurrence{1}", n, n === 1 ? "" : "s"), t("Check the marks, then apply them in the inspector."));
           return { ...all, [id]: cur };
         });
       } catch (e) {
-        toast("error", "Search failed", errorText(e));
+        toast("error", t("Search failed"), errorText(e));
       }
     },
     [id, toast],
@@ -636,7 +680,7 @@ export default function App() {
         setComparing((c) => (c && c.a === id && c.b === b ? { ...c, result } : c));
       } catch (e) {
         setComparing(null);
-        toast("error", "Comparing failed", errorText(e));
+        toast("error", t("Comparing failed"), errorText(e));
       }
     },
     [id, openPath, toast],
@@ -650,11 +694,11 @@ export default function App() {
       let path: string | null = null;
       if (saveAsCopy || !d.info.state.path) {
         const base = (d.info.state.path ?? d.info.state.name).replace(/\.pdf$/i, "");
-        path = await saveDialog({ defaultPath: `${base} (signed).pdf`, filters: PDF_FILTER }).catch(() => null);
+        path = await saveDialog({ defaultPath: t("{0} (signed).pdf", base), filters: PDF_FILTER }).catch(() => null);
         if (!path) return false;
       }
       setSelection(null);
-      const ok = await run(id, () => api.sign(id, identity, options, path), "Signed and saved");
+      const ok = await run(id, () => api.sign(id, identity, { ...options, timestampUrl: settingsRef.current.timestampUrl }, path), t("Signed and saved"));
       if (ok) {
         await reloadInfo(id);
         if (path) setRecent(rememberRecent({ path, name: path.split(/[\\/]/).pop() ?? path, pages: d.info.state.pages }));
@@ -688,7 +732,7 @@ export default function App() {
     try {
       await printDocument(active.pdf);
     } catch (e) {
-      toast("error", "Printing failed", errorText(e));
+      toast("error", t("Printing failed"), errorText(e));
     } finally {
       setBusy(false);
     }
@@ -707,7 +751,7 @@ export default function App() {
     if (id == null || selection?.kind !== "annot") return;
     const { page, annot } = selection;
     setSelection(null);
-    run(id, () => api.deleteAnnot(id, page, annot.index), "Annotation deleted");
+    run(id, () => api.deleteAnnot(id, page, annot.index), t("Annotation deleted"));
   }, [id, selection, run]);
 
   const pageAction = useCallback(
@@ -722,13 +766,13 @@ export default function App() {
           await run(id, () => api.rotate(id, sorted, action === "rotate-left" ? -90 : 90));
           break;
         case "duplicate":
-          await run(id, () => api.duplicate(id, sorted[0]), "Page duplicated");
+          await run(id, () => api.duplicate(id, sorted[0]), t("Page duplicated"));
           break;
         case "blank-before":
-          await run(id, () => api.insertBlank(id, sorted[0]), "Blank page inserted");
+          await run(id, () => api.insertBlank(id, sorted[0]), t("Blank page inserted"));
           break;
         case "blank-after":
-          await run(id, () => api.insertBlank(id, last + 1), "Blank page inserted");
+          await run(id, () => api.insertBlank(id, last + 1), t("Blank page inserted"));
           break;
         case "insert-file": {
           const picked = await openDialog({ multiple: false, filters: PDF_FILTER }).catch(() => null);
@@ -737,19 +781,19 @@ export default function App() {
         }
         case "extract": {
           const base = active.info.state.name.replace(/\.pdf$/i, "");
-          const label = sorted.length === 1 ? `page ${sorted[0] + 1}` : `pages ${sorted[0] + 1}-${last + 1}`;
-          const path = await saveDialog({ defaultPath: `${base} (${label}).pdf`, filters: PDF_FILTER }).catch(() => null);
+          const label = sorted.length === 1 ? t("page {0}", sorted[0] + 1) : t("pages {0}-{1}", sorted[0] + 1, last + 1);
+          const path = await saveDialog({ defaultPath: t("{0} ({1}).pdf", base, label), filters: PDF_FILTER }).catch(() => null);
           if (!path) break;
           try {
             await api.extract(id, sorted, path);
-            toast("success", `Extracted ${plural(sorted.length, "page")}`, path);
+            toast("success", t("Extracted {0}", plural(sorted.length, "page")), path);
           } catch (e) {
-            toast("error", "Extracting failed", errorText(e));
+            toast("error", t("Extracting failed"), errorText(e));
           }
           break;
         }
         case "delete":
-          if (await run(id, () => api.deletePages(id, sorted), `Deleted ${plural(sorted.length, "page")}`)) {
+          if (await run(id, () => api.deletePages(id, sorted), t("Deleted {0}", plural(sorted.length, "page")))) {
             updateDoc(id, (d) => ({ ...d, selectedPages: [] }));
           }
           break;
@@ -942,34 +986,34 @@ export default function App() {
             anchor,
             align: "end",
             items: [
-              { type: "heading", label: "Page marks" },
-              { label: "Watermark…", icon: Droplets, onSelect: () => setDialog({ kind: "marks", tab: "watermark" }) },
-              { label: "Header & footer…", icon: PanelTop, onSelect: () => setDialog({ kind: "marks", tab: "header" }) },
-              { label: "Bates numbers…", icon: Hash, onSelect: () => setDialog({ kind: "marks", tab: "bates" }) },
-              { label: "Page labels…", icon: Tags, onSelect: () => setDialog({ kind: "marks", tab: "labels" }) },
+              { type: "heading", label: t("Page marks") },
+              { label: t("Watermark…"), icon: Droplets, onSelect: () => setDialog({ kind: "marks", tab: "watermark" }) },
+              { label: t("Header & footer…"), icon: PanelTop, onSelect: () => setDialog({ kind: "marks", tab: "header" }) },
+              { label: t("Bates numbers…"), icon: Hash, onSelect: () => setDialog({ kind: "marks", tab: "bates" }) },
+              { label: t("Page labels…"), icon: Tags, onSelect: () => setDialog({ kind: "marks", tab: "labels" }) },
               { type: "separator" },
-              { label: "Resize pages…", icon: Scaling, onSelect: () => setDialog({ kind: "resize" }) },
-              { label: "Split document…", icon: Scissors, onSelect: () => setDialog({ kind: "split" }) },
+              { label: t("Resize pages…"), icon: Scaling, onSelect: () => setDialog({ kind: "resize" }) },
+              { label: t("Split document…"), icon: Scissors, onSelect: () => setDialog({ kind: "split" }) },
               { type: "separator" },
-              { label: "Flatten form fields", icon: Layers, disabled: !fields.length, onSelect: () => flatten("forms") },
-              { label: "Flatten annotations", icon: Layers, onSelect: () => flatten("annotations") },
-              { label: "Flatten everything", icon: Layers, onSelect: () => flatten("all") },
-              { type: "heading", label: "Professional" },
-              { label: "Recognise text (OCR)…", icon: ScanText, onSelect: () => setDialog({ kind: "ocr" }) },
-              { label: "Signatures…", icon: ShieldCheck, onSelect: () => setDialog({ kind: "signatures" }) },
-              { label: "Sign…", icon: PenLine, onSelect: () => setDialog({ kind: "sign", field: null }) },
-              { label: "Protect with a password…", icon: Lock, onSelect: () => setDialog({ kind: "protect" }) },
-              { label: "Optimise…", icon: Zap, onSelect: () => setDialog({ kind: "optimize" }) },
+              { label: t("Flatten form fields"), icon: Layers, disabled: !fields.length, onSelect: () => flatten("forms") },
+              { label: t("Flatten annotations"), icon: Layers, onSelect: () => flatten("annotations") },
+              { label: t("Flatten everything"), icon: Layers, onSelect: () => flatten("all") },
+              { type: "heading", label: t("Professional") },
+              { label: t("Recognise text (OCR)…"), icon: ScanText, onSelect: () => setDialog({ kind: "ocr" }) },
+              { label: t("Signatures…"), icon: ShieldCheck, onSelect: () => setDialog({ kind: "signatures" }) },
+              { label: t("Sign…"), icon: PenLine, onSelect: () => setDialog({ kind: "sign", field: null }) },
+              { label: t("Protect with a password…"), icon: Lock, onSelect: () => setDialog({ kind: "protect" }) },
+              { label: t("Optimise…"), icon: Zap, onSelect: () => setDialog({ kind: "optimize" }) },
               { label: "PDF/A…", icon: Archive, onSelect: () => setDialog({ kind: "pdfa" }) },
-              { label: "Accessibility…", icon: Accessibility, onSelect: () => setDialog({ kind: "access" }) },
+              { label: t("Accessibility…"), icon: Accessibility, onSelect: () => setDialog({ kind: "access" }) },
               { type: "separator" },
               ...docs
                 .filter((d) => d.info.state.id !== id && d.pdf)
-                .map((d) => ({ label: `Compare with ${d.info.state.name}`, icon: GitCompareArrows, onSelect: () => void startCompare(d.info.state.id) })),
-              { label: "Compare with a file…", icon: GitCompareArrows, onSelect: () => void startCompare("file") },
+                .map((d) => ({ label: t("Compare with {0}", d.info.state.name), icon: GitCompareArrows, onSelect: () => void startCompare(d.info.state.id) })),
+              { label: t("Compare with a file…"), icon: GitCompareArrows, onSelect: () => void startCompare("file") },
               { type: "separator" },
-              { label: "Export pages or text…", icon: FileOutput, onSelect: () => setDialog({ kind: "export" }) },
-              { label: "Print…", icon: Printer, shortcut: `${MOD}+P`, onSelect: () => print() },
+              { label: t("Export pages or text…"), icon: FileOutput, onSelect: () => setDialog({ kind: "export" }) },
+              { label: t("Print…"), icon: Printer, shortcut: `${MOD}+P`, onSelect: () => print() },
             ],
           })
         }
@@ -988,14 +1032,14 @@ export default function App() {
             selected={active.selectedPages}
             onSelectPages={(pages) => updateDoc(active.info.state.id, (d) => ({ ...d, selectedPages: pages }))}
             onNavigate={goTo}
-            onReorder={(order) => run(active.info.state.id, () => api.reorder(active.info.state.id, order), "Pages reordered")}
+            onReorder={(order) => run(active.info.state.id, () => api.reorder(active.info.state.id, order), t("Pages reordered"))}
             onPageAction={pageAction}
             onMenu={setMenu}
             fonts={active.fonts}
             activeFontKey={activeFontKey}
             selection={selection}
             onSelect={setSelection}
-            onDeleteAnnot={(page, index) => run(active.info.state.id, () => api.deleteAnnot(active.info.state.id, page, index), "Annotation deleted")}
+            onDeleteAnnot={(page, index) => run(active.info.state.id, () => api.deleteAnnot(active.info.state.id, page, index), t("Annotation deleted"))}
             history={active.info.state.history}
             future={active.info.state.future}
             labels={labels}
@@ -1009,7 +1053,7 @@ export default function App() {
           />
         )}
 
-        <section className="panel stage" aria-label="Document">
+        <section className="panel stage" aria-label={t("Document")}>
           {docs.length > 0 && (
             <DocTabs
               docs={docs.map((d) => ({ id: d.info.state.id, name: d.info.state.name, dirty: d.info.state.dirty }))}
@@ -1047,28 +1091,28 @@ export default function App() {
                     ref={findRef}
                     compact
                     icon={Search}
-                    placeholder="Find in document"
+                    placeholder={t("Find in document")}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") stepHit(e.shiftKey ? -1 : 1);
                       if (e.key === "Escape") setFindOpen(false);
                     }}
-                    aria-label="Find in document"
+                    aria-label={t("Find in document")}
                   />
                   <span className="find-count">
                     {query.trim()
                       ? hits.length
-                        ? `${hitIndex + 1} of ${hits.length}${searching ? "…" : ""}`
+                        ? t("{0} of {1}{2}", hitIndex + 1, hits.length, searching ? "…" : "")
                         : searching
-                          ? "Searching…"
-                          : "No matches"
+                          ? t("Searching…")
+                          : t("No matches")
                       : ""}
                   </span>
-                  <IconButton icon={ChevronUp} label="Previous match" shortcut="Shift+Enter" spacing="compact" disabled={!hits.length} onClick={() => stepHit(-1)} />
-                  <IconButton icon={ChevronDown} label="Next match" shortcut="Enter" spacing="compact" disabled={!hits.length} onClick={() => stepHit(1)} />
+                  <IconButton icon={ChevronUp} label={t("Previous match")} shortcut="Shift+Enter" spacing="compact" disabled={!hits.length} onClick={() => stepHit(-1)} />
+                  <IconButton icon={ChevronDown} label={t("Next match")} shortcut="Enter" spacing="compact" disabled={!hits.length} onClick={() => stepHit(1)} />
                   <span className="spacer" />
-                  <IconButton icon={X} label="Close find" shortcut="Esc" spacing="compact" onClick={() => setFindOpen(false)} />
+                  <IconButton icon={X} label={t("Close find")} shortcut="Esc" spacing="compact" onClick={() => setFindOpen(false)} />
                 </div>
               )}
               <Viewer
@@ -1114,8 +1158,8 @@ export default function App() {
                 )}
                 {active.fonts && <span className="status-item">{plural(active.fonts.length, "font")}</span>}
                 {showOrder && (
-                  <button type="button" className="status-item status-button" onClick={() => setShowOrder(false)} data-tooltip="Hide the reading order">
-                    reading order shown
+                  <button type="button" className="status-item status-button" onClick={() => setShowOrder(false)} data-tooltip={t("Hide the reading order")}>
+                    {t("reading order shown")}
                   </button>
                 )}
                 <span className="status-hint">{TOOL_HINTS[tool]}</span>
@@ -1166,9 +1210,9 @@ export default function App() {
             onRedactClear={() => setRedactions((all) => ({ ...all, [active.info.state.id]: {} }))}
             onUncrop={(scope) => {
               const all = Array.from({ length: active.info.state.pages }, (_, i) => i);
-              run(active.info.state.id, () => api.crop(active.info.state.id, scope === "page" ? [active.page] : all, null), "Crop removed");
+              run(active.info.state.id, () => api.crop(active.info.state.id, scope === "page" ? [active.page] : all, null), t("Crop removed"));
             }}
-            onSaveMeta={(m: Meta) => run(active.info.state.id, () => api.setMeta(active.info.state.id, m), "Properties updated").then(async () => {
+            onSaveMeta={(m: Meta) => run(active.info.state.id, () => api.setMeta(active.info.state.id, m), t("Properties updated")).then(async () => {
               const info = await api.info(active.info.state.id);
               updateDoc(active.info.state.id, (d) => ({ ...d, info }));
             })}
@@ -1187,8 +1231,8 @@ export default function App() {
           selected={active.selectedPages}
           fonts={active.fonts}
           catalog={catalog}
-          onApply={(pages, mark) => run(active.info.state.id, () => api.pageMarks(active.info.state.id, pages, mark), "Marks added")}
-          onSaveLabels={(ranges) => run(active.info.state.id, () => api.setLabels(active.info.state.id, ranges), "Page labels saved")}
+          onApply={(pages, mark) => run(active.info.state.id, () => api.pageMarks(active.info.state.id, pages, mark), t("Marks added"))}
+          onSaveLabels={(ranges) => run(active.info.state.id, () => api.setLabels(active.info.state.id, ranges), t("Page labels saved"))}
           onClose={() => setDialog(null)}
         />
       )}
@@ -1197,7 +1241,7 @@ export default function App() {
           pages={active.info.state.pages}
           current={active.page}
           selected={active.selectedPages}
-          onApply={(pages, w, h) => run(active.info.state.id, () => api.resizePages(active.info.state.id, pages, w, h), "Pages resized")}
+          onApply={(pages, w, h) => run(active.info.state.id, () => api.resizePages(active.info.state.id, pages, w, h), t("Pages resized"))}
           onClose={() => setDialog(null)}
         />
       )}
@@ -1209,10 +1253,10 @@ export default function App() {
           onSplit={async (ranges, folder) => {
             try {
               const files = await api.split(active.info.state.id, ranges, folder);
-              toast("success", `Saved ${files.length} file${files.length === 1 ? "" : "s"}`, folder);
+              toast("success", t("Saved {0} file{1}", files.length, files.length === 1 ? "" : "s"), folder);
               return true;
             } catch (e) {
-              toast("error", "Splitting failed", errorText(e));
+              toast("error", t("Splitting failed"), errorText(e));
               return false;
             }
           }}
@@ -1227,10 +1271,10 @@ export default function App() {
             try {
               const info = await api.protect(active.info.state.id, req);
               updateDoc(active.info.state.id, (d) => ({ ...d, info }));
-              toast("success", req ? "Protection is written on the next save" : "Protection is removed on the next save");
+              toast("success", req ? t("Protection is written on the next save") : t("Protection is removed on the next save"));
               return true;
             } catch (e) {
-              toast("error", "That didn’t work", errorText(e));
+              toast("error", t("That didn’t work"), errorText(e));
               return false;
             }
           }}
@@ -1380,7 +1424,7 @@ export default function App() {
       )}
       {dropping && (
         <div className="drop-veil">
-          <div className="drop-veil-card">Drop PDFs to open them</div>
+          <div className="drop-veil-card">{t("Drop PDFs to open them")}</div>
         </div>
       )}
       <Toasts toasts={toasts} onDismiss={(tid) => setToasts((t) => t.filter((x) => x.id !== tid))} />

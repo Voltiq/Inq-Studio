@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 mod annots;
 mod compare;
@@ -20,6 +20,7 @@ mod marks;
 mod outline;
 mod redact;
 mod interp;
+mod log;
 mod pages;
 mod store;
 mod sysfonts;
@@ -36,10 +37,37 @@ mod tests_v4;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // First, so a second start hands its files over before anything else happens.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let files: Vec<String> = args
+                .iter()
+                .skip(1)
+                .filter(|a| a.to_lowercase().ends_with(".pdf"))
+                .map(|a| {
+                    let p = std::path::Path::new(a);
+                    if p.is_absolute() { p.to_path_buf() } else { std::path::Path::new(&cwd).join(p) }
+                })
+                .filter(|p| p.is_file())
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            if !files.is_empty() {
+                let _ = app.emit("open-files", files);
+            }
+        }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(store::Store::default())
         .setup(|app| {
+            if let Ok(dir) = app.path().app_log_dir() {
+                log::init(dir);
+            }
             // The window starts hidden and the page shows it once its theme is
             // applied. Show it anyway if the page never gets that far.
             let handle = app.handle().clone();
@@ -127,6 +155,9 @@ pub fn run() {
             pro::sig_file_identity,
             pro::sig_create_identity,
             pro::doc_sign,
+            log::log_info,
+            log::log_write,
+            log::crashes_seen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

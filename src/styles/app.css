@@ -2180,3 +2180,31 @@ select.field-widget option {
     display: none !important;
   }
 }
+
+/* ----- v1.0: settings blocks ----- */
+
+.settings-block {
+  display: grid;
+  gap: var(--space-100);
+  padding-top: var(--space-150);
+  border-top: 1px solid var(--line);
+}
+
+.settings-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-200);
+}
+
+.settings-line > span {
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+}
+
+.settings-line small {
+  color: var(--text-subtlest);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
+}
