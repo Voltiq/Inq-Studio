@@ -616,3 +616,49 @@ fn timestamps_a_signature() {
     assert!(list[0].timestamped);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Reads a file the way the app does and writes the bytes the window would render from:
+/// `INQ_TEST_PDF=in.pdf INQ_TEST_OUT=out.pdf cargo test rendering_bytes_of_a_file -- --ignored`
+#[test]
+#[ignore]
+fn rendering_bytes_of_a_file() {
+    let Ok(path) = std::env::var("INQ_TEST_PDF") else { return };
+    let bytes = std::fs::read(&path).unwrap();
+    let mut doc = store::load_bytes(&bytes, None).unwrap();
+    let render = Render::full(&mut doc, 1).unwrap();
+    println!("{} objects, {} pages, {} -> {} bytes", doc.objects.len(), doc.get_pages().len(), bytes.len(), render.bytes.len());
+    if let Ok(out) = std::env::var("INQ_TEST_OUT") {
+        std::fs::write(out, &render.bytes).unwrap();
+    }
+}
+
+/// A scanner-style file: indented, with a tab between a content stream's data and `endstream`.
+#[test]
+fn reads_streams_with_white_space_before_endstream() {
+    for (length, body) in [(18, "\tq\r\n\t/F1 12 Tf\r\n\tQ"), (99, "\tq\r\n\t/F1 12 Tf\r\n\tQ")] {
+        let mut file = String::from("%PDF-1.4\r\n");
+        let mut offsets = Vec::new();
+        let objects = [
+            "<</Type/Catalog/Pages 2 0 R>>".to_string(),
+            "<</Type/Pages/Kids[3 0 R]/Count 1>>".to_string(),
+            "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents[4 0 R]>>".to_string(),
+            format!("\t<</Length {length}>>\r\n\tstream\r\n{body}\r\n\tendstream"),
+        ];
+        for (i, o) in objects.iter().enumerate() {
+            offsets.push(file.len());
+            file.push_str(&format!("{} 0 obj\r\n{o}\r\nendobj\r\n", i + 1));
+        }
+        let xref = file.len();
+        file.push_str("xref\r\n0 5\r\n0000000000 65535 f\r\n");
+        for o in offsets {
+            file.push_str(&format!("{o:010} 00000 n\r\n"));
+        }
+        file.push_str(&format!("trailer\r\n<</Size 5/Root 1 0 R>>\r\nstartxref\r\n{xref}\r\n%%EOF\r\n"));
+        // The library alone loses the page's content …
+        assert!(Document::load_mem(file.as_bytes()).unwrap().get_object((4, 0)).is_err());
+        // … the app's loader reads it.
+        let doc = store::load_bytes(file.as_bytes(), None).unwrap();
+        let content = doc.get_page_content(pages::page_id(&doc, 0).unwrap());
+        assert_eq!(String::from_utf8_lossy(&content).trim_end(), body, "declared length {length}");
+    }
+}

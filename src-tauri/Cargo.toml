@@ -1,6 +1,6 @@
 [package]
 name = "inq-studio"
-version = "1.0.0"
+version = "1.0.1"
 description = "Inq Studio: a professional PDF viewer and editor that writes in the document's own fonts"
 license = "MIT"
 repository = "https://github.com/Voltiq/Inq-Studio"

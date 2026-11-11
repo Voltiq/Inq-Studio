@@ -19,6 +19,7 @@ mod images;
 mod marks;
 mod outline;
 mod redact;
+mod repair;
 mod interp;
 mod log;
 mod pages;

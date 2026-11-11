@@ -401,6 +401,11 @@ pub(crate) fn load_bytes(bytes: &[u8], password: Option<&str>) -> Result<Documen
     if doc.is_encrypted() && doc.decrypt(password.unwrap_or("")).is_err() {
         return Err("PASSWORD_REQUIRED".to_string());
     }
+    // Objects the library could not read (indented scanner files): without them pages come out blank.
+    let repaired = crate::repair::missing_streams(bytes, &mut doc);
+    if repaired > 0 {
+        crate::log::write("info", &format!("read {repaired} stream object(s) leniently"));
+    }
     Ok(doc)
 }
 

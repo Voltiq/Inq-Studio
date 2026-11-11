@@ -88,6 +88,7 @@ update files with `TAURI_SIGNING_PRIVATE_KEY` (a repository secret) and publishe
 | `src-tauri/src/optimize.rs`, `compare.rs`, `tags.rs` | Optimiser, document comparison and text export, structure tree |
 | `src-tauri/src/pro.rs` | Commands of the v0.4 tools |
 | `src-tauri/src/log.rs` | Log file and crash reports |
+| `src-tauri/src/repair.rs` | Re-reads stream objects the PDF library skipped (indented scanner files) |
 | `src/lib/i18n.ts`, `src/lib/de.ts` | Translation: English keys, the German table |
 | `src/lib/mock.ts` | Stand-in for the engine, for the browser preview and interface tests |
 | `src/lib/updates.ts` | Update check and install |

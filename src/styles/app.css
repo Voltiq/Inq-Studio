@@ -301,12 +301,16 @@
 .tab-close {
   display: grid;
   place-items: center;
+  flex: none;
   width: 1.25rem;
   height: 1.25rem;
+  /* The browser's own button padding would leave less room than the cross needs and push it off centre. */
+  padding: 0;
   border: 0;
   border-radius: var(--r-xs);
   background: none;
   color: var(--icon-subtlest);
+  line-height: 0;
   opacity: 0;
 }
 

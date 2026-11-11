@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 — 2026-11-11
+
+### Fixed
+- **Scanned PDFs that opened as blank pages**: files written by some scanner software put white space where
+  the PDF rules allow only a line end, and the page content was skipped on opening. Such files are now read
+  in full.
+- The close cross on document tabs sits in the middle of its hover square.
+
 ## 1.0.0 — 2026-11-11
 
 The first release with an installer. Everything from the 0.x builds is in: editing text in the document's own
