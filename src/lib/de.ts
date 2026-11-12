@@ -505,6 +505,11 @@ export const de: Record<string, string> = {
   "The manual explains every tool and opens with F1. This tour can be started again from the same menu. Settings are next to it.":
     "Das Handbuch erklärt jedes Werkzeug und öffnet sich mit F1. Die Tour lässt sich aus demselben Menü erneut starten. Daneben liegen die Einstellungen.",
 
+  "Save as…": "Speichern unter…",
+  "Realign text automatically": "Text automatisch neu ausrichten",
+  "When a line of a paragraph gets shorter or longer, the words after it are wrapped again; when a line is deleted, the lines below move up. Other paragraphs and the rest of the page stay where they are.":
+    "Wird eine Zeile eines Absatzes kürzer oder länger, werden die Wörter danach neu umbrochen; wird eine Zeile gelöscht, rücken die Zeilen darunter nach oben. Andere Absätze und der Rest der Seite bleiben, wo sie sind.",
+
   // ----- PDF/A -----
   "PDF/A — archiving": "PDF/A — Archivierung",
   "Convert to": "Umwandeln in",

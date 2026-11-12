@@ -119,6 +119,12 @@ export function SettingsDialog({
           onChange={(snap) => onChange({ ...settings, snap })}
         />
         <Toggle
+          label={t("Realign text automatically")}
+          description={t("When a line of a paragraph gets shorter or longer, the words after it are wrapped again; when a line is deleted, the lines below move up. Other paragraphs and the rest of the page stay where they are.")}
+          checked={settings.reflow}
+          onChange={(reflow) => onChange({ ...settings, reflow })}
+        />
+        <Toggle
           label={t("Outline text lines while editing")}
           description={t("Shows a dashed box around every editable line when the Edit text tool is active.")}
           checked={settings.showLineBoxes}

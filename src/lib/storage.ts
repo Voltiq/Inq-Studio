@@ -16,6 +16,8 @@ export interface Settings {
   saveMode: "auto" | "full" | "incremental";
   /** Snap moved text to other lines' edges and baselines. */
   snap: boolean;
+  /** Keep paragraphs in shape when one of their lines is rewritten or deleted. */
+  reflow: boolean;
   /** Language of the interface; "system" follows Windows. */
   language: "system" | "en" | "de";
   /** RFC 3161 timestamp server for signatures; empty for none. */
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   inkWidth: 2,
   saveMode: "auto",
   snap: true,
+  reflow: true,
   language: "system",
   timestampUrl: "",
 };

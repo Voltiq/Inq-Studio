@@ -59,6 +59,13 @@ Mit dem Werkzeug **Auswählen** (`V`) wird Text markiert und kopiert; die **Hand
   mehrere Zeilen.
 - Der Inspektor ändert Größe, Farbe und Schrift.
 
+Ist in den Einstellungen **Text automatisch neu ausrichten** eingeschaltet (das ist die Vorgabe), behält ein
+Absatz seine Form, wenn Sie eine seiner Zeilen ändern: Wird eine Zeile kürzer, rücken die Wörter nach, die
+ihren Satz fortsetzen; wird sie länger, läuft der Überhang in die nächsten Zeilen; wird eine Zeile gelöscht,
+rücken die Zeilen darunter nach oben. Es bewegen sich nur die Zeilen desselben Textblocks. Andere Blöcke und
+der Rest der Seite bleiben, wo sie sind; ein Text, der um eine Zeile wächst, kann also in das laufen, was
+darunter steht.
+
 Was Sie tippen, wird **in der Schrift geschrieben, die das Dokument bereits verwendet**. Fehlt dieser Schrift
 ein Zeichen, nimmt Inq Studio es aus derselben Schrift, sofern sie auf Ihrem Computer installiert ist; nur
 wenn sie nirgends zu finden ist, wird das fehlende Zeichen in einer ähnlichen Schrift gesetzt, und ein Hinweis
@@ -172,7 +179,7 @@ oder den Text als Textdatei. `Strg+P` druckt.
 
 ## Einstellungen
 
-Sprache (Englisch, Deutsch; gilt nach einem Neustart), Design, Zoom, Einheiten, Ihr Verfassername, die Art
+Sprache (Englisch, Deutsch; gilt nach einem Neustart), Design, automatisches Ausrichten von Text, Zoom, Einheiten, Ihr Verfassername, die Art
 des Speicherns, der Zeitstempelserver, Updates und der Ort der Protokolldatei. Ihre Dokumente bleiben auf
 Ihrem Computer: Inq Studio lädt nichts hoch. Die einzigen Verbindungen sind die tägliche Prüfung auf eine
 neue Version und, falls eingetragen, der Zeitstempelserver — der einen Hashwert erhält, nie das Dokument.

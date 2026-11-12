@@ -55,6 +55,12 @@ Choose **Edit text and images** (`E`). Every line gets an outline.
   keys nudge. `Delete` removes it. `Shift`-click or drag a box to select several lines.
 - The inspector changes size, colour and font.
 
+With **Realign text automatically** switched on in Settings (it is by default), a paragraph keeps its shape
+when you change one of its lines: make a line shorter and the words that continue its sentence move up into
+it; make it longer and the overflow wraps into the next lines; delete a line and the lines below it move up.
+Only the lines of the same block of text move. Other blocks and the rest of the page stay where they are, so
+a text that grows by a line can run into what is below it.
+
 What you type is written **in the font the document already uses**. If that font lacks a character, Inq
 Studio takes it from the same typeface installed on your computer; only if the typeface is nowhere to be found
 is the missing character set in a similar font, and a notice tells you. The **Fonts** tab of the sidebar shows
@@ -163,7 +169,7 @@ as a text file. `Ctrl+P` prints.
 
 ## Settings
 
-Language (English, German; applies after a restart), theme, zoom, units, your author name, how files are saved, the timestamp server,
+Language (English, German; applies after a restart), theme, automatic realigning of text, zoom, units, your author name, how files are saved, the timestamp server,
 updates, and where the log file is. Your documents stay on your computer: Inq Studio uploads nothing. The
 only connections it makes are the daily check for a new version and, if you set one, the timestamp server —
 which receives a hash, never the document.

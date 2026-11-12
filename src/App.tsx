@@ -524,7 +524,9 @@ export default function App() {
     () => ({
       editLines: async (page, lines, revision, edit) => {
         if (id == null) return false;
-        const ok = await run(id, () => api.editLines(id, page, revision, lines, edit));
+        // Rewriting or deleting a line keeps its paragraph in shape, when that is switched on.
+        const whole = settingsRef.current.reflow && (edit.text != null || edit.delete) ? { ...edit, reflow: true } : edit;
+        const ok = await run(id, () => api.editLines(id, page, revision, lines, whole));
         if (ok) setSelection(null);
         return ok;
       },
@@ -985,6 +987,7 @@ export default function App() {
         onToggleInspector={() => setInspectorOpen((v) => !v)}
         onOpen={openPicker}
         onSave={() => id != null && save(id)}
+        onSaveAs={() => id != null && saveAs(id)}
         onUndo={undo}
         onRedo={redo}
         onToggleTheme={() => setSettings({ ...settings, theme: theme === "dark" ? "light" : "dark" })}

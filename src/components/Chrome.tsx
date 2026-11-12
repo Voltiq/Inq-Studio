@@ -21,6 +21,7 @@ import {
   Plus,
   Redo2,
   Save,
+  SaveAll,
   Search,
   Settings as SettingsIcon,
   ShieldCheck,
@@ -88,6 +89,7 @@ export function TopBar({
   onToggleInspector,
   onOpen,
   onSave,
+  onSaveAs,
   onUndo,
   onRedo,
   onToggleTheme,
@@ -110,6 +112,7 @@ export function TopBar({
   onToggleInspector: () => void;
   onOpen: () => void;
   onSave: () => void;
+  onSaveAs: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onToggleTheme: () => void;
@@ -135,6 +138,7 @@ export function TopBar({
         <span className="topbar-group" data-tour="file">
           <IconButton icon={FolderOpen} label={t("Open PDF")} shortcut={`${MOD}+O`} onClick={onOpen} />
           <IconButton icon={Save} label={t("Save")} shortcut={`${MOD}+S`} disabled={!canSave} onClick={onSave} />
+          <IconButton icon={SaveAll} label={t("Save as…")} shortcut={`${MOD}+Shift+S`} disabled={!canSave} onClick={onSaveAs} />
           <span className="toolbar-divider" aria-hidden="true" />
           <IconButton icon={Undo2} label={t("Undo")} shortcut={`${MOD}+Z`} disabled={!canUndo} onClick={onUndo} />
           <IconButton icon={Redo2} label={t("Redo")} shortcut={`${MOD}+Y`} disabled={!canRedo} onClick={onRedo} />

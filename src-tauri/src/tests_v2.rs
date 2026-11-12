@@ -170,6 +170,104 @@ fn reflows_paragraphs() {
     assert!(texts.contains(&"First paragraph.") && texts.contains(&"Second one."), "{texts:?}");
 }
 
+/// The lines of the four-line paragraph, top to bottom: text and baseline height.
+fn para_lines(doc: &Document) -> Vec<(String, f32, f32)> {
+    let scan = scan_page(doc, first_page(doc)).unwrap();
+    let mut out: Vec<(String, f32, f32)> = scan.lines.iter().filter(|l| l.em < 20.0).map(|l| (l.text.clone(), l.origin[0], l.origin[1])).collect();
+    out.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+    out
+}
+
+#[test]
+fn shortening_a_line_pulls_the_next_words_up() {
+    let mut doc = paragraph_doc();
+    let pid = first_page(&doc);
+    let scan = scan_page(&doc, pid).unwrap();
+    let second = scan.lines.iter().find(|l| l.text.starts_with("the document")).unwrap().id;
+    let edit = edit::LineEdit { text: Some("it uses, and wraps a".into()), reflow: true, ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[second], &edit).unwrap();
+    let doc = reload(&mut doc);
+    let lines = para_lines(&doc);
+    assert_eq!(lines[0].0, "Inq Studio edits text in the fonts that", "the line above is untouched");
+    assert!(lines[1].0.starts_with("it uses, and wraps a paragraph"), "words moved up: {:?}", lines[1].0);
+    let all: Vec<&str> = lines.iter().map(|l| l.0.as_str()).collect();
+    assert_eq!(all.join(" "), "Inq Studio edits text in the fonts that it uses, and wraps a paragraph again when its text gets longer or shorter.");
+    for (i, l) in lines.iter().enumerate() {
+        assert!((l.1 - 72.0).abs() < 0.01, "left edge kept");
+        assert!((l.2 - (700.0 - 14.0 * i as f32)).abs() < 0.01, "even leading: {l:?}");
+    }
+
+    // Without the option the line changes alone.
+    let mut doc = paragraph_doc();
+    let pid = first_page(&doc);
+    let edit = edit::LineEdit { text: Some("it uses, and wraps a".into()), ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[second], &edit).unwrap();
+    let lines = para_lines(&doc);
+    assert_eq!(lines[1].0, "it uses, and wraps a");
+    assert_eq!(lines[2].0, "paragraph again when its text gets longer");
+}
+
+#[test]
+fn a_longer_line_pushes_the_rest_down() {
+    let mut doc = paragraph_doc();
+    let pid = first_page(&doc);
+    let scan = scan_page(&doc, pid).unwrap();
+    let last = scan.lines.iter().find(|l| l.text == "or shorter.").unwrap().id;
+    let third = scan.lines.iter().find(|l| l.text.starts_with("paragraph again")).unwrap().id;
+    // The third line grows by a few words: they spill into the last line.
+    let edit = edit::LineEdit { text: Some("paragraph again, line by line and word by word, when its text gets longer".into()), reflow: true, ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[third], &edit).unwrap();
+    let _ = last;
+    let doc = reload(&mut doc);
+    let lines = para_lines(&doc);
+    assert_eq!(lines.len(), 4, "{lines:?}");
+    assert_eq!(lines[1].0, "the document already uses, and wraps a");
+    assert_eq!(lines[2].0, "paragraph again, line by line and word by");
+    assert_eq!(lines[3].0, "word, when its text gets longer or shorter.");
+    let all: Vec<&str> = lines.iter().map(|l| l.0.as_str()).collect();
+    assert!(all.join(" ").ends_with("when its text gets longer or shorter."), "{all:?}");
+    let width = scan.blocks.iter().find(|b| b.lines.len() == 4).unwrap().width;
+    let scan2 = scan_page(&doc, first_page(&doc)).unwrap();
+    for l in scan2.lines.iter().filter(|l| l.em < 20.0) {
+        assert!(l.chars.last().unwrap() <= &(width + 0.5), "fits the column: {}", l.text);
+    }
+}
+
+#[test]
+fn a_new_line_in_the_middle_moves_the_following_lines() {
+    let mut doc = paragraph_doc();
+    let pid = first_page(&doc);
+    let scan = scan_page(&doc, pid).unwrap();
+    let first = scan.lines.iter().find(|l| l.text.starts_with("Inq Studio")).unwrap().id;
+    // Ends with a full stop and a short line, so the flow stops at the second line.
+    let edit = edit::LineEdit { text: Some("Inq Studio edits text.".into()), reflow: true, ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[first], &edit).unwrap();
+    let doc = reload(&mut doc);
+    let lines = para_lines(&doc);
+    let all: Vec<&str> = lines.iter().map(|l| l.0.as_str()).collect();
+    assert_eq!(all.join(" "), "Inq Studio edits text. the document already uses, and wraps a paragraph again when its text gets longer or shorter.");
+    for (i, l) in lines.iter().enumerate() {
+        assert!((l.2 - (700.0 - 14.0 * i as f32)).abs() < 0.01, "even leading: {l:?}");
+    }
+}
+
+#[test]
+fn deleting_a_line_moves_the_lines_below_up() {
+    let mut doc = paragraph_doc();
+    let pid = first_page(&doc);
+    let scan = scan_page(&doc, pid).unwrap();
+    let second = scan.lines.iter().find(|l| l.text.starts_with("the document")).unwrap().id;
+    let edit = edit::LineEdit { delete: true, reflow: true, ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[second], &edit).unwrap();
+    let doc = reload(&mut doc);
+    let lines = para_lines(&doc);
+    let got: Vec<(&str, f32)> = lines.iter().filter(|l| !l.0.is_empty()).map(|l| (l.0.as_str(), l.2)).collect();
+    assert_eq!(got.len(), 3);
+    assert_eq!(got[0].0, "Inq Studio edits text in the fonts that");
+    assert_eq!(got[1].0, "paragraph again when its text gets longer");
+    assert!((got[1].1 - 686.0).abs() < 0.01 && (got[2].1 - 672.0).abs() < 0.01, "{got:?}");
+}
+
 #[test]
 fn justified_paragraphs_stay_justified() {
     let mut doc = Document::with_version("1.7");

@@ -182,6 +182,8 @@ export interface LineEdit {
   /** For recognised text on a scan: the colour of the paper around the line, and of its ink. */
   cover?: [number, number, number];
   ink?: [number, number, number];
+  /** Wrap the rest of the paragraph again after a rewrite; move lines up after a delete. */
+  reflow?: boolean;
 }
 
 export type FontChoice =

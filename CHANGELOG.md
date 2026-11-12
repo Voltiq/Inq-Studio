@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-11-12
+
+### Added
+- **Text realigns itself**: when you rewrite one line of a paragraph, the words after it are wrapped again.
+  A shorter line takes up the words that continue its sentence, a longer one spills into the next lines,
+  and the rest of the block moves up or down with it. Deleting a line moves the lines below it up. Only
+  the lines of the same block of text move. Switch it off under *Settings › Realign text automatically*.
+- **Save as** has its own button next to Save.
+
 ## 1.1.0 — 2026-11-12
 
 ### Added

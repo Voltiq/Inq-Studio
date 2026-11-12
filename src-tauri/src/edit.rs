@@ -39,6 +39,10 @@ pub struct LineEdit {
     /// paper around the line and of its ink, as the window sees them.
     pub cover: Option<[f32; 3]>,
     pub ink: Option<[f32; 3]>,
+    /// Keep the paragraph around the line in shape: a rewritten line is
+    /// wrapped again together with the rest of its paragraph, and the lines
+    /// below a deleted line move up.
+    pub reflow: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -917,14 +921,110 @@ pub fn edit_lines(doc: &mut Document, page_id: ObjectId, ids: &[usize], edit: &L
     if edit.text.is_some() && !ids.is_empty() && ids.iter().all(hidden) {
         return rewrite_scanned(doc, page_id, &scan, ids, edit);
     }
+    if edit.reflow && ids.len() == 1 && edit.size.is_none() && edit.font.is_none() && edit.color.is_none() {
+        if let (Some(text), Some(line)) = (&edit.text, scan.lines.get(ids[0])) {
+            if let Some(notices) = reflow_line(doc, page_id, &scan, line.block, ids[0], text)? {
+                return Ok(notices);
+            }
+        }
+    }
     let mut enc = Encoder::new(page_id);
     let mut plan = Plan::default();
     for &id in ids {
         plan_line(doc, page_id, &scan, id, edit, &mut enc, &mut plan)?;
     }
+    if edit.reflow && edit.delete {
+        close_gaps(doc, page_id, &scan, ids, &mut enc, &mut plan)?;
+    }
     let notices = enc.finish(doc)?;
     plan.apply(doc, page_id, &scan)?;
     Ok(notices)
+}
+
+/// After lines were deleted: the lines below them in the same paragraph move up.
+fn close_gaps(doc: &mut Document, page_id: ObjectId, scan: &Scan, deleted: &[usize], enc: &mut Encoder, plan: &mut Plan) -> Result<(), String> {
+    for block in &scan.blocks {
+        if block.lines.len() < 2 {
+            continue;
+        }
+        let up = scan.runs[scan.lines[block.lines[0]].runs[0]].up;
+        let mut gone = 0.0f32;
+        for &li in &block.lines {
+            if deleted.contains(&li) {
+                gone += 1.0;
+            } else if gone > 0.0 {
+                let shift = LineEdit { dx: up.0 * gone * block.leading, dy: up.1 * gone * block.leading, ..Default::default() };
+                plan_line(doc, page_id, scan, li, &shift, enc, plan)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Where a line starts and ends along the baseline, and how far below the
+/// paragraph's first line it sits, in the paragraph's own frame.
+fn line_place(scan: &Scan, block: &crate::interp::Block, li: usize) -> (f32, f32, f32) {
+    let first = &scan.lines[block.lines[0]];
+    let fr = &scan.runs[first.runs[0]];
+    let l = &scan.lines[li];
+    let v = (l.origin[0] - first.origin[0], l.origin[1] - first.origin[1]);
+    let x = v.0 * fr.dir.0 + v.1 * fr.dir.1;
+    (x, x + l.chars.last().copied().unwrap_or(0.0), v.0 * fr.up.0 + v.1 * fr.up.1)
+}
+
+/// The last line (index within the paragraph block) of the sentence flow that
+/// line `from` belongs to: the first line at or after it that was broken on
+/// purpose. A line was broken on purpose when the first word of the next line
+/// would still have fitted on it, or when the next line is indented.
+fn flow_end(scan: &Scan, block: &crate::interp::Block, from: usize) -> usize {
+    let base = block.left.min(block.first_x);
+    let right = base + block.width;
+    let flush_left = block.align == "left" || block.align == "justify";
+    for j in from..block.lines.len() - 1 {
+        let l = &scan.lines[block.lines[j]];
+        let next = &scan.lines[block.lines[j + 1]];
+        let (x0, x1, _) = line_place(scan, block, block.lines[j]);
+        let (n0, _, _) = line_place(scan, block, block.lines[j + 1]);
+        let word = next.text.chars().position(|c| c == ' ').unwrap_or(next.text.chars().count());
+        let word_w = next.chars.get(word).copied().unwrap_or(0.0);
+        let space = 0.25 * l.em;
+        let room = if flush_left { right - x1 } else { block.width - (x1 - x0) };
+        if word_w + space <= room - 0.5 || (flush_left && n0 > block.left + 0.5 * l.em) {
+            return j;
+        }
+    }
+    block.lines.len() - 1
+}
+
+/// Rewrites one line of a paragraph and wraps it again together with the
+/// lines that continue its sentence; what follows in the paragraph moves up
+/// or down by the lines that were won or lost. `None` when the line stands
+/// alone, so there is no column to wrap to.
+fn reflow_line(doc: &mut Document, page_id: ObjectId, scan: &Scan, block_id: usize, line_id: usize, text: &str) -> Result<Option<Vec<String>>, String> {
+    let Some(block) = scan.blocks.get(block_id) else { return Ok(None) };
+    let Some(from) = block.lines.iter().position(|&l| l == line_id) else { return Ok(None) };
+    if block.lines.len() < 2 || block.lines.iter().any(|&l| !scan.lines[l].editable) {
+        return Ok(None);
+    }
+    let to = flow_end(scan, block, from);
+    // The paragraph's text after this line, up to the end of the flow.
+    let of_line = |li: usize| -> Option<(usize, usize)> {
+        let first = block.char_src.iter().position(|c| matches!(c, Some((l, _)) if *l == li))?;
+        let last = block.char_src.iter().rposition(|c| matches!(c, Some((l, _)) if *l == li))?;
+        Some((first, last + 1))
+    };
+    let (Some((_, own_end)), Some((_, end))) = (of_line(line_id), of_line(block.lines[to])) else { return Ok(None) };
+    let all: Vec<char> = block.text.chars().collect();
+    let rest: String = all[own_end..end].iter().collect();
+    let mut new = text.replace(['\r', '\n'], " ");
+    // A word that was split with a hyphen at the line end is whole in the paragraph's text.
+    let was_split = from < to && !rest.starts_with(' ') && scan.lines[line_id].text.ends_with('-');
+    if was_split && new.ends_with('-') {
+        new.pop();
+    }
+    new.push_str(&rest);
+    let new = new.trim_start().to_string();
+    rewrap(doc, page_id, scan, block, from, to, &new).map(Some)
 }
 
 #[cfg(test)]
@@ -1060,17 +1160,27 @@ fn wrap(items: Vec<Item>, adv: &dyn Fn(&Item) -> f32, limit: &dyn Fn(usize) -> f
 pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: &str) -> Result<Vec<String>, String> {
     let scan = scan_page(doc, page_id)?;
     let block = scan.blocks.get(block_id).ok_or("This paragraph no longer exists. Refresh and try again.")?.clone();
+    let last = block.lines.len() - 1;
+    rewrap(doc, page_id, &scan, &block, 0, last, text)
+}
+
+/// Replaces the lines `from..=to` of a paragraph (indexes within the block)
+/// with `text`, wrapped to the paragraph's column. Lines of the paragraph
+/// below `to` keep their text and move by the lines won or lost.
+fn rewrap(doc: &mut Document, page_id: ObjectId, scan: &Scan, block: &crate::interp::Block, from: usize, to: usize, text: &str) -> Result<Vec<String>, String> {
     for &li in &block.lines {
         if !scan.lines[li].editable {
             return Err(scan.lines[li].note.clone().unwrap_or_else(|| "This text cannot be edited.".into()));
         }
     }
-    let first_line = &scan.lines[block.lines[0]];
+    let whole = from == 0 && to + 1 == block.lines.len();
+    let part = &block.lines[from..=to];
+    let first_line = &scan.lines[part[0]];
     let fr = &scan.runs[first_line.runs[0]];
 
-    // Styles: every run of the paragraph.
+    // Styles: every run of the lines being replaced.
     let mut run_ids: Vec<usize> = Vec::new();
-    for &li in &block.lines {
+    for &li in part {
         for &ri in &scan.lines[li].runs {
             if !run_ids.contains(&ri) {
                 run_ids.push(ri);
@@ -1078,15 +1188,18 @@ pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: 
         }
     }
     let local = |ri: usize| run_ids.iter().position(|x| *x == ri).unwrap_or(0);
+    // The stretch of the paragraph's text those lines hold.
+    let lo = block.char_src.iter().position(|c| matches!(c, Some((l, _)) if part.contains(l))).unwrap_or(0);
+    let hi = block.char_src.iter().rposition(|c| matches!(c, Some((l, _)) if part.contains(l))).map(|i| i + 1).unwrap_or(0);
     let mut old_styles: Vec<usize> = Vec::new();
-    for cs in &block.char_src {
+    for cs in &block.char_src[lo..hi] {
         let s = match cs {
             Some((li, ci)) => local(scan.lines[*li].char_runs[*ci]),
             None => old_styles.last().copied().unwrap_or(0),
         };
         old_styles.push(s);
     }
-    let old: Vec<char> = block.text.chars().collect();
+    let old: Vec<char> = block.text.chars().skip(lo).take(hi - lo).collect();
     let new: Vec<char> = text.replace("\r\n", "\n").replace('\r', "\n").chars().collect();
     let styles = map_styles(&old, &old_styles, &new);
 
@@ -1130,9 +1243,14 @@ pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: 
     let single = block.lines.len() == 1;
     let indent = block.first_x - block.left;
     let width = block.width.max(1.0);
+    // Where the first replaced line starts, in the frame of the paragraph's first line.
+    let (start_x, _, start_y) = line_place(scan, block, part[0]);
+    let right = block.left.min(block.first_x) + width;
     let limit = |n: usize| -> f32 {
         if single {
             f32::MAX
+        } else if n == 0 && from > 0 {
+            (right - start_x).max(1.0)
         } else if n == 0 {
             width - indent
         } else {
@@ -1141,15 +1259,16 @@ pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: 
     };
     let mut laid = wrap(items, &adv, &limit);
 
-    // Place lines in the first line's frame.
+    // Place lines in the frame of the paragraph's first line.
     let (d, u) = (fr.dir, fr.up);
-    let o = first_line.origin;
+    let o = scan.lines[block.lines[0]].origin;
     let mut placed: Vec<(Vec<Item>, (f32, f32))> = Vec::new();
     let mut new_para = true;
     let count = laid.len();
     for (n, (line, w, ends_para)) in laid.iter_mut().enumerate() {
-        let x0 = if new_para { block.first_x } else { block.left };
-        let room = if single { *w } else if new_para { width - indent } else { width };
+        let continued = n == 0 && from > 0;
+        let x0 = if continued { start_x } else if new_para { block.first_x } else { block.left };
+        let room = if single { *w } else if continued { (right - start_x).max(1.0) } else if new_para { width - indent } else { width };
         let free = (room - *w).max(0.0);
         let mut x = x0;
         match block.align.as_str() {
@@ -1167,7 +1286,7 @@ pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: 
             }
             _ => {}
         }
-        let y = -(n as f32) * block.leading;
+        let y = start_y - (n as f32) * block.leading;
         let p = (o[0] + d.0 * x + u.0 * y, o[1] + d.1 * x + u.1 * y);
         placed.push((std::mem::take(line), p));
         new_para = *ends_para;
@@ -1175,16 +1294,25 @@ pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: 
 
     let mut plan = Plan::default();
     plan.append = emit_lines(&placed, &looks, fr.ctm, [fr.tm[0], fr.tm[1], fr.tm[2], fr.tm[3]], th)?;
-    for &li in &block.lines {
+    for &li in part {
         let l = &scan.lines[li];
         let src = src_of(&l.src);
         for &ri in &l.runs {
-            plan.empty_op(&scan, src, scan.runs[ri].op);
+            plan.empty_op(scan, src, scan.runs[ri].op);
+        }
+    }
+    // The rest of the paragraph follows: up when lines were won, down when the text grew.
+    let n_new = placed.iter().filter(|p| !p.0.is_empty()).count().max(1);
+    let won = part.len() as f32 - n_new as f32;
+    if !whole && won != 0.0 {
+        let shift = LineEdit { dx: u.0 * won * block.leading, dy: u.1 * won * block.leading, ..Default::default() };
+        for &li in &block.lines[to + 1..] {
+            plan_line(doc, page_id, scan, li, &shift, &mut enc, &mut plan)?;
         }
     }
     let mut notices = enc.finish(doc)?;
-    plan.apply(doc, page_id, &scan)?;
-    if !single {
+    plan.apply(doc, page_id, scan)?;
+    if !single && whole {
         let n = placed.iter().filter(|p| !p.0.is_empty()).count();
         if n != block.lines.len() {
             notices.push(format!("The paragraph now runs over {n} lines instead of {}.", block.lines.len()));
