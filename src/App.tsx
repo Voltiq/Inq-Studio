@@ -5,7 +5,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { findUpdateQuietly } from "./lib/updates";
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp, Route, Search, X } from "lucide-react";
 import { DocTabs, SHAPE_TOOLS, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, type Toast } from "./components/Chrome";
 import { PageMarksDialog, ResizeDialog, SplitDialog, type MarksTab } from "./components/ToolDialogs";
 import type { ToolOptions } from "./components/PageExtras";
@@ -14,6 +14,9 @@ import { Accessibility, Archive, Droplets, FileOutput, GitCompareArrows, Hash, L
 import { AccessibilityDialog, ExportDialog, OcrDialog, OptimizeDialog, PdfaDialog, ProtectDialog, SignaturesDialog, SignDialog } from "./components/ProDialogs";
 import { CompareView } from "./components/Compare";
 import { Welcome } from "./components/Welcome";
+import { TitleBar } from "./components/TitleBar";
+import { Tour, tourSeen } from "./components/Tour";
+import { ManualDialog } from "./components/Manual";
 import { Viewer, type Selection, type TextStyle, type ViewerActions } from "./components/Viewer";
 import { Sidebar, type PageAction, type SideTab } from "./components/Sidebar";
 import { Inspector } from "./components/Inspector";
@@ -88,6 +91,9 @@ export default function App() {
   const [menu, setMenu] = useState<MenuRequest | null>(null);
   const [recent, setRecent] = useState<RecentFile[]>(loadRecent);
   const [showSettings, setShowSettings] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  /** The tour runs by itself on the first start. */
+  const [touring, setTouring] = useState(() => !tourSeen());
   const [password, setPassword] = useState<{ path: string; wrong: boolean } | null>(null);
   const [unsaved, setUnsaved] = useState<{ ids: number[]; then: () => void } | null>(null);
   const [dropping, setDropping] = useState(false);
@@ -846,6 +852,11 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShowManual(true);
+        return;
+      }
       if (mod) {
         const handled = () => e.preventDefault();
         if (k === "o") return handled(), openPicker();
@@ -946,6 +957,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <TitleBar document={active?.info.state.name ?? null} dirty={!!active?.info.state.dirty} />
       <TopBar
         hud={
           active
@@ -977,6 +989,15 @@ export default function App() {
         onRedo={redo}
         onToggleTheme={() => setSettings({ ...settings, theme: theme === "dark" ? "light" : "dark" })}
         onSettings={() => setShowSettings(true)}
+        onHelp={(anchor) =>
+          setMenu({
+            anchor,
+            items: [
+              { label: t("Manual"), icon: BookOpen, shortcut: "F1", onSelect: () => setShowManual(true) },
+              { label: t("Take the tour"), icon: Route, onSelect: () => setTouring(true) },
+            ],
+          })
+        }
         canTools={!!active?.pdf}
         onSignatures={() => setDialog({ kind: "signatures" })}
         onProtect={() => setDialog({ kind: "protect" })}
@@ -1396,6 +1417,8 @@ export default function App() {
             />
           );
         })()}
+      {showManual && <ManualDialog onClose={() => setShowManual(false)} />}
+      {touring && !showManual && !showSettings && !password && !unsaved && <Tour onClose={() => setTouring(false)} />}
       {showSettings && <SettingsDialog settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
       {password && (
         <PasswordDialog

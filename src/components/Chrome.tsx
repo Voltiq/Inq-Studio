@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  CircleHelp,
   CircleCheck,
   FileText,
   FolderOpen,
@@ -96,6 +97,7 @@ export function TopBar({
   onSignatures,
   onProtect,
   onPdfa,
+  onHelp,
 }: {
   hud: HudInfo | null;
   theme: "light" | "dark";
@@ -117,6 +119,7 @@ export function TopBar({
   onSignatures: () => void;
   onProtect: () => void;
   onPdfa: () => void;
+  onHelp: (anchor: HTMLElement) => void;
 }) {
   return (
     <header className="topbar" data-tauri-drag-region>
@@ -128,17 +131,14 @@ export function TopBar({
           selected={sidebarOpen}
           onClick={onToggleSidebar}
         />
-        <div className="brand">
-          <img className="brand-glyph" src="/app-icon.svg" alt="" />
-          <span className="brand-name">
-            {t("Inq")}{" "}<span className="brand-studio">{t("Studio")}</span>
-          </span>
-        </div>
-        <IconButton icon={FolderOpen} label={t("Open PDF")} shortcut={`${MOD}+O`} onClick={onOpen} />
-        <IconButton icon={Save} label={t("Save")} shortcut={`${MOD}+S`} disabled={!canSave} onClick={onSave} />
         <span className="toolbar-divider" aria-hidden="true" />
-        <IconButton icon={Undo2} label={t("Undo")} shortcut={`${MOD}+Z`} disabled={!canUndo} onClick={onUndo} />
-        <IconButton icon={Redo2} label={t("Redo")} shortcut={`${MOD}+Y`} disabled={!canRedo} onClick={onRedo} />
+        <span className="topbar-group" data-tour="file">
+          <IconButton icon={FolderOpen} label={t("Open PDF")} shortcut={`${MOD}+O`} onClick={onOpen} />
+          <IconButton icon={Save} label={t("Save")} shortcut={`${MOD}+S`} disabled={!canSave} onClick={onSave} />
+          <span className="toolbar-divider" aria-hidden="true" />
+          <IconButton icon={Undo2} label={t("Undo")} shortcut={`${MOD}+Z`} disabled={!canUndo} onClick={onUndo} />
+          <IconButton icon={Redo2} label={t("Redo")} shortcut={`${MOD}+Y`} disabled={!canRedo} onClick={onRedo} />
+        </span>
       </div>
 
       <div className="hud" aria-live="polite">
@@ -188,7 +188,8 @@ export function TopBar({
           label={theme === "dark" ? t("Light theme") : t("Dark theme")}
           onClick={onToggleTheme}
         />
-        <IconButton icon={Wrench} label={t("Document tools")} disabled={!canTools} onClick={(e) => onTools(e.currentTarget)} />
+        <IconButton icon={Wrench} label={t("Document tools")} disabled={!canTools} data-tour="tools" onClick={(e) => onTools(e.currentTarget)} />
+        <IconButton icon={CircleHelp} label={t("Help")} shortcut="F1" data-tour="help" onClick={(e) => onHelp(e.currentTarget)} />
         <IconButton icon={SettingsIcon} label={t("Settings")} shortcut={`${MOD}+,`} onClick={onSettings} />
         <IconButton
           icon={PanelRight}

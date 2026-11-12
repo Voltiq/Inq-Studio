@@ -466,6 +466,45 @@ export const de: Record<string, string> = {
   "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.":
     "Dies ist ein Scan: Die alte Zeile wurde in der Farbe des Papiers abgedeckt und der neue Text darüber gezeichnet.",
 
+  // ----- Title bar, tour, manual -----
+  "Minimise": "Minimieren",
+  "Maximise": "Maximieren",
+  "Restore": "Verkleinern",
+  "Close window": "Fenster schließen",
+  "Help": "Hilfe",
+  "Manual": "Handbuch",
+  "Contents": "Inhalt",
+  "Take the tour": "Tour starten",
+  "Tour": "Tour",
+  "Step {0} of {1}": "Schritt {0} von {1}",
+  "Skip": "Überspringen",
+  "Back": "Zurück",
+  "Next": "Weiter",
+  "This part appears once a document is open.": "Dieser Teil erscheint, sobald ein Dokument geöffnet ist.",
+  "Welcome to Inq Studio": "Willkommen bei Inq Studio",
+  "Eight short steps show where everything is. You can leave at any time with Esc and start the tour again from the Help button.":
+    "Acht kurze Schritte zeigen, wo alles ist. Mit Esc lässt sich die Tour jederzeit beenden und über den Knopf Hilfe erneut starten.",
+  "Open and save": "Öffnen und speichern",
+  "Open a PDF here, or drop files anywhere on the window. Nothing is written to the file until you save, and every change can be undone until you close the document.":
+    "Hier ein PDF öffnen oder Dateien irgendwo auf das Fenster ziehen. In die Datei wird erst beim Speichern geschrieben, und jede Änderung lässt sich rückgängig machen, bis das Dokument geschlossen wird.",
+  "The document at a glance": "Das Dokument auf einen Blick",
+  "Name, page and PDF version. Badges appear when the document is signed, password protected or claims PDF/A; click one for the details.":
+    "Name, Seite und PDF-Version. Kennzeichen erscheinen, wenn das Dokument signiert oder kennwortgeschützt ist oder PDF/A angibt; ein Klick zeigt die Einzelheiten.",
+  "The tools": "Die Werkzeuge",
+  "Select and read, edit text in the document's own fonts, add text and images, mark up, draw shapes, redact and crop. Each tool has a one-letter shortcut, shown when you rest the pointer on it. Page navigation, zoom and find are on the right.":
+    "Auswählen und lesen, Text in den Schriften des Dokuments bearbeiten, Text und Bilder hinzufügen, kommentieren, Formen zeichnen, schwärzen und zuschneiden. Jedes Werkzeug hat ein Kürzel aus einem Buchstaben; es erscheint, wenn der Zeiger darauf ruht. Blättern, Zoom und Suche stehen rechts.",
+  "The sidebar": "Die Seitenleiste",
+  "Page thumbnails to reorder, rotate, insert and delete pages; bookmarks; the fonts of the document; comments; and the history of your changes, where you can jump back to any step.":
+    "Seitenminiaturen zum Umordnen, Drehen, Einfügen und Löschen von Seiten; Lesezeichen; die Schriften des Dokuments; Kommentare; und der Verlauf Ihrer Änderungen, in dem Sie zu jedem Schritt zurückspringen können.",
+  "The inspector": "Der Inspektor",
+  "Shows what is selected and the options of the active tool: font, size and colour of text, the look of a shape, the document's properties.":
+    "Zeigt, was ausgewählt ist, und die Optionen des aktiven Werkzeugs: Schrift, Größe und Farbe von Text, das Aussehen einer Form, die Eigenschaften des Dokuments.",
+  "Everything that works on the whole document: recognise text in scans (OCR), sign and check signatures, protect with a password, optimise, PDF/A, compare, watermarks, export and print.":
+    "Alles, was das ganze Dokument betrifft: Text in Scans erkennen (OCR), signieren und Signaturen prüfen, mit Kennwort schützen, optimieren, PDF/A, vergleichen, Wasserzeichen, exportieren und drucken.",
+  "Help is here": "Hier gibt es Hilfe",
+  "The manual explains every tool and opens with F1. This tour can be started again from the same menu. Settings are next to it.":
+    "Das Handbuch erklärt jedes Werkzeug und öffnet sich mit F1. Die Tour lässt sich aus demselben Menü erneut starten. Daneben liegen die Einstellungen.",
+
   // ----- PDF/A -----
   "PDF/A — archiving": "PDF/A — Archivierung",
   "Convert to": "Umwandeln in",

@@ -1,14 +1,39 @@
-# Inq Studio — Anleitung
+# Inq Studio — Handbuch
 
-Inq Studio ist ein PDF-Betrachter und -Editor für Windows. Diese Anleitung geht durch, was er kann, in der
-Reihenfolge, in der man es meist braucht. *An English version is in [GUIDE.md](GUIDE.md).*
+Inq Studio ist ein PDF-Betrachter und -Editor für Windows. Dieses Handbuch geht durch, was er kann, in der
+Reihenfolge, in der man es meist braucht. Derselbe Text öffnet sich in der App mit `F1`. *An English version
+is in [GUIDE.md](GUIDE.md).*
+
+## Installieren und aktualisieren
+
+Das Installationsprogramm von der [Release-Seite](https://github.com/Voltiq/Inq-Studio/releases/latest)
+herunterladen und ausführen. Es installiert für den aktuellen Benutzer und braucht keine
+Administratorrechte. Es ist noch nicht signiert: Warnt SmartScreen, *Weitere Informationen › Trotzdem
+ausführen* wählen.
+
+Danach öffnet sich ein PDF über *Öffnen mit* im Explorer in Inq Studio; dort lässt es sich auch als
+Standard festlegen.
+
+Inq Studio sucht einmal am Tag nach einer neuen Version und meldet sie. *Einstellungen › Updates* prüft
+sofort und installiert. Updates sind signiert; die Signatur wird geprüft, bevor etwas installiert wird.
+
+## Erste Schritte
+
+1. Ein PDF öffnen: der Ordner-Knopf, `Strg+O`, oder Dateien irgendwo auf das Fenster ziehen.
+2. Mit den Werkzeugen über der Seite lesen, kommentieren oder bearbeiten.
+3. Mit `Strg+S` speichern, mit `Strg+Umschalt+S` unter neuem Namen.
+
+Beim ersten Start zeigt eine kurze **Tour** die Teile des Fensters. Sie lässt sich über den Knopf **Hilfe**
+(das Fragezeichen oben rechts) erneut starten; dort öffnet sich auch dieses Handbuch.
 
 ## Das Fenster
 
+- **Titelleiste**: Symbol und Name der App, das geöffnete Dokument und die Knöpfe zum Minimieren,
+  Maximieren und Schließen des Fensters. Ziehen verschiebt das Fenster, ein Doppelklick maximiert es.
 - **Obere Leiste**: links Öffnen, Speichern, Rückgängig und Wiederholen; in der Mitte Name und Seite des
   Dokuments und seine Kennzeichen (*signiert*, Art des Kennwortschutzes, PDF/A-Angabe — ein Klick öffnet den
-  passenden Dialog); rechts Design, **Dokumentwerkzeuge** (der Schraubenschlüssel), Einstellungen und
-  Inspektor.
+  passenden Dialog); rechts Design, **Dokumentwerkzeuge** (der Schraubenschlüssel), Hilfe, Einstellungen
+  und Inspektor.
 - **Seitenleiste** (`Strg+B`): Seitenminiaturen, Lesezeichen, Schriften, Kommentare, Verlauf.
 - **Werkzeugleiste** über der Seite: die unten beschriebenen Werkzeuge, Blättern, Zoom, Suche.
 - **Inspektor** (`Strg+I`): was ausgewählt ist, die Optionen des aktiven Werkzeugs und die
@@ -40,6 +65,15 @@ wenn sie nirgends zu finden ist, wird das fehlende Zeichen in einer ähnlichen S
 sagt es Ihnen. Der Tab **Schriften** der Seitenleiste zeigt für jede Schrift, was beim Bearbeiten möglich ist.
 
 **Text hinzufügen** (`T`): dorthin klicken, wo er beginnen soll, tippen, mit `Strg+Eingabe` bestätigen.
+
+### Text auf Scans
+
+Eine gescannte Seite ist ein Bild; ihre Wörter sind Bildpunkte, kein Text. Nach *Text erkennen* (siehe
+unten) lassen sich die Wörter markieren und auch neu schreiben: mit dem Bearbeiten-Werkzeug auf eine
+erkannte Zeile doppelklicken. Weil die alten Wörter Teil des Bildes sind, deckt Inq Studio die Zeile in der
+Farbe des Papiers ab und zeichnet Ihren Text in der Farbe der Schrift darüber. Der neue Text wird in
+Helvetica oder Arial gesetzt und trifft die Schrift des Scans daher nicht genau. Erkannter Text wird Zeile
+für Zeile bearbeitet.
 
 ## Bilder
 
@@ -76,8 +110,16 @@ selbst entfernt. Nach dem Speichern lassen sie sich nicht zurückholen.
 
 *Dokumentwerkzeuge › Text erkennen*. Sprache des Textes und Seiten wählen. Die Wörter werden unsichtbar
 über den Scan gelegt, sodass man ihn durchsuchen, markieren und kopieren kann; das Bild bleibt, wie es ist.
-Die Erkennung läuft auf Ihrem Computer mit den in Windows installierten OCR-Sprachen (Einstellungen › Zeit
-und Sprache › Sprache und Region › Ihre Sprache › Sprachoptionen).
+
+Die Erkennung läuft auf Ihrem Computer mit den in Windows installierten OCR-Sprachen. Das sind
+Windows-Sprachpakete; mit der Sprache der Oberfläche von Inq Studio haben sie nichts zu tun.
+
+- **Automatisch erkennen** (angeboten, wenn mehr als eine Sprache installiert ist) liest die erste Seite
+  mit Text in jeder installierten Sprache und behält die passende.
+- **Sprache zu Windows hinzufügen**: eine Sprache wählen und *Installieren…* drücken. Windows lädt das
+  Paket herunter und fragt nach Administratorrechten; auf einem von Schule oder Firma verwalteten Computer
+  ist das womöglich nicht erlaubt. Dasselbe geht in Windows unter *Einstellungen › Zeit und Sprache ›
+  Sprache und Region*.
 
 ## Signaturen
 
@@ -137,6 +179,20 @@ neue Version und, falls eingetragen, der Zeitstempelserver — der einen Hashwer
 
 Meldungen aus der PDF-Engine (manche Fehlertexte und Hinweise) erscheinen teilweise noch auf Englisch.
 
+## Wenn etwas nicht klappt
+
+- **Ein PDF zeigt leere Seiten.** Auf die neueste Version aktualisieren; Dateien mancher Scanner wurden vor
+  1.0.1 unvollständig gelesen. Bleibt es dabei, ist die Datei womöglich beschädigt: Andere Programme
+  reparieren stillschweigend.
+- **Eine Zeile lässt sich nicht bearbeiten.** Der Tab *Schriften* der Seitenleiste sagt für jede Schrift,
+  was beim Bearbeiten möglich ist. Text, der Teil eines Bildes ist, braucht zuerst *Text erkennen*.
+- **Im OCR-Dialog fehlt meine Sprache.** Ihr Paket mit *Sprache zu Windows hinzufügen* installieren.
+- **Getippter Text ist auf einem Scan unsichtbar.** Auf 1.0.2 oder neuer aktualisieren.
+- **Die App ist abgestürzt.** Der nächste Start zeigt den Absturzbericht. Protokolldatei und Berichte
+  liegen nur auf Ihrem Computer (*Einstellungen › Diagnose › Im Ordner anzeigen*) und enthalten nie den
+  Inhalt von Dokumenten. Hängen Sie sie an, wenn Sie ein Problem unter
+  [github.com/Voltiq/Inq-Studio/issues](https://github.com/Voltiq/Inq-Studio/issues) melden.
+
 ## Tastenkürzel
 
 | | |
@@ -145,6 +201,7 @@ Meldungen aus der PDF-Engine (manche Fehlertexte und Hinweise) erscheinen teilwe
 | `Strg+Z` / `Strg+Y` | Rückgängig / Wiederholen |
 | `Strg+F` / `Strg+P` | Suchen / Drucken |
 | `Strg+B` / `Strg+I` / `Strg+,` | Seitenleiste / Inspektor / Einstellungen |
+| `F1` | Dieses Handbuch |
 | `Strg+W` / `Strg+Tab` | Tab schließen / nächster Tab |
 | `Strg+=` / `Strg+-` / `Strg+0` | Vergrößern / Verkleinern / Breite anpassen |
 | `V` `H` `E` `T` `I` | Auswählen, Hand, Bearbeiten, Text hinzufügen, Bild einfügen |

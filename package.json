@@ -1,7 +1,7 @@
 {
   "name": "inq-studio",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A professional PDF viewer and editor that writes in the document's own fonts.",
   "license": "MIT",
   "repository": "github:Voltiq/Inq-Studio",

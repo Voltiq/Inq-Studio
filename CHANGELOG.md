@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0 — 2026-11-12
+
+### Added
+- **Its own title bar**: the window no longer has the Windows frame. The bar shows the app's icon and name,
+  the open document, and the buttons to minimise, maximise and close. Drag it to move the window;
+  double-click it to maximise.
+- **A tour** on the first start: eight steps that point at the parts of the window. Start it again from the
+  new **Help** button at the top right.
+- **The manual inside the app**: `F1` or the Help button opens it, with a list of chapters, in the language
+  of the interface.
+
+### Changed
+- The guide is now a full manual ([English](docs/GUIDE.md), [Deutsch](docs/ANLEITUNG.md)), with new chapters
+  on installing and updating, first steps, text on scans, OCR languages and what to do when something goes
+  wrong.
+- The app's name and icon moved from the top bar into the title bar.
+
 ## 1.0.2 — 2026-11-12
 
 ### Added

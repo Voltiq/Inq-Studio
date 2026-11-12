@@ -16,7 +16,7 @@
 
 .app {
   display: grid;
-  grid-template-rows: 3.5rem minmax(0, 1fr);
+  grid-template-rows: 2rem 3.25rem minmax(0, 1fr);
   height: 100vh;
   background:
     radial-gradient(1000px 560px at 85% -8%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 60%),
@@ -2214,4 +2214,342 @@ select.field-widget option {
   color: var(--text-subtlest);
   font-size: var(--font-size-small);
   overflow-wrap: anywhere;
+}
+
+/* ----- Title bar ----- */
+
+/* The window has no Windows frame: this bar is its title bar. It stays above
+   dialogs, so the window can always be moved, minimised and closed. */
+.titlebar {
+  position: relative;
+  z-index: 950;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  height: 2rem;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 100%;
+  padding-left: 0.75rem;
+  min-width: 0;
+}
+
+.titlebar-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.titlebar-name {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
+.titlebar-studio {
+  color: var(--text-subtlest);
+  font-weight: var(--font-weight-medium);
+}
+
+.titlebar-document {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 40vw;
+  height: 100%;
+  overflow: hidden;
+  font-size: 0.75rem;
+  color: var(--text-subtlest);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.titlebar-dirty {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.titlebar-buttons {
+  display: flex;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.titlebar-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.875rem;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: default;
+  transition: background var(--duration-fast, 100ms) var(--ease, ease);
+}
+
+.titlebar-button:hover {
+  background: color-mix(in oklab, var(--text) 10%, transparent);
+  color: var(--text);
+}
+
+.titlebar-button:active {
+  background: color-mix(in oklab, var(--text) 16%, transparent);
+}
+
+.titlebar-button.is-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.titlebar-button.is-close:active {
+  background: #b22a1c;
+  color: #fff;
+}
+
+.topbar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-050);
+  border-radius: var(--r-md, 10px);
+}
+
+/* ----- Tour ----- */
+
+.tour {
+  position: fixed;
+  inset: 2rem 0 0;
+  z-index: 940;
+}
+
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: var(--blanket);
+}
+
+/* The part being shown stays clear; everything else is dimmed by the shadow. */
+.tour-spot {
+  position: fixed;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 6px color-mix(in oklab, var(--accent) 30%, transparent),
+    0 0 0 200vmax var(--blanket);
+  transition:
+    left var(--duration-medium, 200ms) var(--ease, ease),
+    top var(--duration-medium, 200ms) var(--ease, ease),
+    width var(--duration-medium, 200ms) var(--ease, ease),
+    height var(--duration-medium, 200ms) var(--ease, ease);
+  pointer-events: none;
+}
+
+.tour-card {
+  --fill: var(--surface-2);
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-100);
+  padding: var(--space-250);
+  border: 1px solid transparent;
+  border-radius: var(--r-xl);
+  background:
+    linear-gradient(var(--fill), var(--fill)) padding-box,
+    linear-gradient(180deg, var(--shine-top), var(--shine-bot)) border-box;
+  box-shadow: var(--sh-3, var(--sh-2)), var(--inset-hi);
+}
+
+.tour-card.is-centred {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tour-title {
+  font-size: 1.0625rem;
+  line-height: 1.4rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+.tour-body {
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+
+.tour-note {
+  font-size: var(--font-size-small);
+  color: var(--text-subtlest);
+}
+
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-100);
+  margin-top: var(--space-100);
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+
+.tour-dot.is-current {
+  background: var(--accent);
+}
+
+/* ----- Manual ----- */
+
+.modal.manual {
+  max-width: 960px;
+  height: min(46rem, 100%);
+}
+
+.manual .modal-body {
+  flex: 1;
+  overflow: hidden;
+  padding-bottom: var(--space-300);
+}
+
+.manual-layout {
+  display: grid;
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+  gap: var(--space-300);
+  flex: 1;
+  min-height: 0;
+}
+
+.manual-contents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.manual-chapter {
+  padding: 0.375rem 0.625rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-subtle);
+  font: inherit;
+  font-size: var(--font-size-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.manual-chapter:hover {
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+  color: var(--text);
+}
+
+.manual-chapter.is-current {
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.manual-text {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-150);
+  line-height: 1.6;
+  color: var(--text-subtle);
+  scrollbar-width: thin;
+  outline: none;
+}
+
+.manual-text > * + * {
+  margin-top: var(--space-150);
+}
+
+.manual-text strong {
+  color: var(--text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.manual-text a {
+  color: var(--accent-text);
+}
+
+.manual-h2 {
+  padding-top: var(--space-200);
+  font-size: 1.0625rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.manual-text > .manual-h2:not(:first-of-type) {
+  margin-top: var(--space-300);
+  border-top: 1px solid var(--line-2);
+}
+
+.manual-h3 {
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.manual-text ul,
+.manual-text ol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-075, 6px);
+  padding-left: 1.25rem;
+}
+
+.manual-text ul {
+  list-style: disc;
+}
+
+.manual-text ol {
+  list-style: decimal;
+}
+
+.manual-key {
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-subtle);
+  box-shadow: inset 0 -1px 0 var(--line-2);
+  font-family: var(--font-code);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.manual-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.manual-table td {
+  padding: 0.4375rem 0.5rem 0.4375rem 0;
+  border-bottom: 1px solid var(--line-2);
+  vertical-align: top;
+}
+
+.manual-table td:first-child {
+  white-space: nowrap;
+  padding-right: var(--space-200);
 }

@@ -76,3 +76,22 @@ describe("the stand-in engine", () => {
     expect(screen.getByRole("button", { name: "Sign…" })).toBeTruthy();
   });
 });
+
+describe("manual", () => {
+  it("reads headings, lists, tables and paragraphs", async () => {
+    const { parseManual } = await import("../components/Manual");
+    const blocks = parseManual("# Title\n\nSome text\nover two lines.\n\n## Chapter\n\n- one\n  more\n- two\n\n1. first\n\n| | |\n| --- | --- |\n| `F1` | Help |\n");
+    expect(blocks.map((b) => b.kind)).toEqual(["heading", "paragraph", "heading", "list", "list", "table"]);
+    expect(blocks[1]).toEqual({ kind: "paragraph", text: "Some text over two lines." });
+    expect(blocks[3]).toEqual({ kind: "list", ordered: false, items: ["one more", "two"] });
+    expect(blocks[5]).toEqual({ kind: "table", rows: [["`F1`", "Help"]] });
+  });
+
+  it("has the same chapters in English and German", async () => {
+    const { parseManual } = await import("../components/Manual");
+    const { readFileSync } = await import("node:fs");
+    const chapters = (file: string) => parseManual(readFileSync(file, "utf8")).filter((b) => b.kind === "heading" && b.level === 2).length;
+    expect(chapters("docs/GUIDE.md")).toBeGreaterThan(15);
+    expect(chapters("docs/ANLEITUNG.md")).toBe(chapters("docs/GUIDE.md"));
+  });
+});

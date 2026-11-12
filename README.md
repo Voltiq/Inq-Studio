@@ -28,7 +28,7 @@ Download the installer from the [latest release](https://github.com/Voltiq/Inq-S
 run it. It installs for the current user, needs no administrator rights, and keeps itself up to date. The
 installer is not code-signed yet: if SmartScreen warns, choose *More info › Run anyway*.
 
-The [user guide](docs/GUIDE.md) ([Deutsch](docs/ANLEITUNG.md)) explains every tool.
+The [manual](docs/GUIDE.md) ([Deutsch](docs/ANLEITUNG.md)) explains every tool; inside the app it opens with `F1`.
 
 ## Develop
 

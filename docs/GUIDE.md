@@ -1,13 +1,37 @@
-# Inq Studio — user guide
+# Inq Studio — manual
 
-Inq Studio is a PDF viewer and editor for Windows. This guide goes through what it does, in the order most
-people need it. *Eine deutsche Fassung steht in [ANLEITUNG.md](ANLEITUNG.md).*
+Inq Studio is a PDF viewer and editor for Windows. This manual goes through what it does, in the order most
+people need it. The same text opens inside the app with `F1`. *Eine deutsche Fassung steht in
+[ANLEITUNG.md](ANLEITUNG.md).*
+
+## Installing and updating
+
+Download the installer from the [releases page](https://github.com/Voltiq/Inq-Studio/releases/latest) and run
+it. It installs for the current user and needs no administrator rights. The installer is not code-signed
+yet: if SmartScreen warns, choose *More info › Run anyway*.
+
+After installing, a PDF opens in Inq Studio with *Open with* in Explorer; make it the default there if you
+like.
+
+Inq Studio looks for a new version once a day and tells you when there is one. *Settings › Updates* checks on
+demand and installs. Updates are signed, and the signature is checked before anything is installed.
+
+## First steps
+
+1. Open a PDF: the folder button, `Ctrl+O`, or drop files anywhere on the window.
+2. Read, mark up or edit with the tools above the page.
+3. Save with `Ctrl+S`, or under a new name with `Ctrl+Shift+S`.
+
+On the first start a short **tour** points at the parts of the window. It can be started again from the
+**Help** button (the question mark at the top right), which also opens this manual.
 
 ## The window
 
+- **Title bar**: the app's icon and name, the open document, and the buttons to minimise, maximise and
+  close the window. Drag it to move the window; double-click it to maximise.
 - **Top bar**: open, save, undo and redo on the left; the document's name, page and badges in the middle
   (*signed*, the kind of password protection, a PDF/A claim — click a badge for its dialog); theme, **document
-  tools** (the wrench), settings and the inspector on the right.
+  tools** (the wrench), help, settings and the inspector on the right.
 - **Sidebar** (`Ctrl+B`): page thumbnails, bookmarks, fonts, comments, history.
 - **Tool bar** above the page: the tools described below, page navigation, zoom, find.
 - **Inspector** (`Ctrl+I`): what is selected, the options of the active tool, and the document's properties.
@@ -37,6 +61,14 @@ is the missing character set in a similar font, and a notice tells you. The **Fo
 for every font what an edit can do.
 
 **Add text** (`T`): click where it should start, type, confirm with `Ctrl+Enter`.
+
+### Text on scans
+
+A scanned page is a picture; its words are pixels, not text. After *Recognise text* (see below) the words
+can be selected, and also rewritten: double-click a recognised line with the edit tool. Because the old
+words are part of the picture, Inq Studio covers the line with a patch in the colour of the paper and draws
+your text over it in the colour of the ink. The new text is set in Helvetica or Arial, so it will not match
+the scan's typeface exactly. Recognised text is edited one line at a time.
 
 ## Images
 
@@ -71,9 +103,16 @@ brought back.
 ## Scans: recognising text (OCR)
 
 *Document tools › Recognise text*. Choose the language of the text and the pages. The words are laid
-invisibly over the scan, so it can be searched, selected and copied; the picture stays as it is. Recognition
-runs on your computer with the OCR languages installed in Windows (Settings › Time & language › Language &
-region › your language › Language options).
+invisibly over the scan, so it can be searched, selected and copied; the picture stays as it is.
+
+Recognition runs on your computer with the OCR languages installed in Windows. These are Windows language
+packs and have nothing to do with the language of Inq Studio's interface.
+
+- **Detect automatically** (offered when more than one language is installed) reads the first page with
+  text in each installed language and keeps the one that fits.
+- **Add a language to Windows**: pick a language and press *Install…*. Windows downloads the pack and asks
+  for administrator rights; on a computer managed by a school or company this may not be allowed. The same
+  can be done in Windows under *Settings › Time & language › Language & region*.
 
 ## Signatures
 
@@ -124,10 +163,22 @@ as a text file. `Ctrl+P` prints.
 
 ## Settings
 
-Language (English, German), theme, zoom, units, your author name, how files are saved, the timestamp server,
+Language (English, German; applies after a restart), theme, zoom, units, your author name, how files are saved, the timestamp server,
 updates, and where the log file is. Your documents stay on your computer: Inq Studio uploads nothing. The
 only connections it makes are the daily check for a new version and, if you set one, the timestamp server —
 which receives a hash, never the document.
+
+## When something goes wrong
+
+- **A PDF shows blank pages.** Update to the latest version; files from some scanners were read
+  incompletely before 1.0.1. If it still happens, the file may be damaged: other readers repair silently.
+- **A line cannot be edited.** The *Fonts* tab of the sidebar says for each font what an edit can do. Text
+  that is part of a picture needs *Recognise text* first.
+- **The language I need is missing in the OCR dialog.** Install its pack with *Add a language to Windows*.
+- **Typed text is invisible on a scan.** Update to 1.0.2 or later.
+- **The app crashed.** The next start shows the crash report. The log file and the reports are on your
+  computer only (*Settings › Diagnostics › Show in folder*) and never contain the content of documents.
+  Attach them when you report a problem at [github.com/Voltiq/Inq-Studio/issues](https://github.com/Voltiq/Inq-Studio/issues).
 
 ## Shortcuts
 
@@ -137,6 +188,7 @@ which receives a hash, never the document.
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+F` / `Ctrl+P` | Find / print |
 | `Ctrl+B` / `Ctrl+I` / `Ctrl+,` | Sidebar / inspector / settings |
+| `F1` | This manual |
 | `Ctrl+W` / `Ctrl+Tab` | Close tab / next tab |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / fit width |
 | `V` `H` `E` `T` `I` | Select, hand, edit, add text, insert image |
