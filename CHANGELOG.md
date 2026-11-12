@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 — 2026-11-12
+
+### Fixed
+- The title bar drags the window along its whole width. Before, the stretch between the document's name and
+  the window buttons did nothing.
+
 ## 1.3.0 — 2026-11-12
 
 ### Added

@@ -43,7 +43,8 @@ export function TitleBar({ document: doc, dirty }: { document: string | null; di
           </>
         )}
       </div>
-      <div className="titlebar-buttons">
+      {/* The free space left of the buttons drags the window too; the buttons themselves do not. */}
+      <div className="titlebar-buttons" data-tauri-drag-region>
         <button type="button" className="titlebar-button" aria-label={t("Minimise")} data-tooltip={t("Minimise")} tabIndex={-1} onClick={() => win().minimize().catch(() => {})}>
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
             <path d="M0 5h10" fill="none" stroke="currentColor" />
