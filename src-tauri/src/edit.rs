@@ -35,6 +35,10 @@ pub struct LineEdit {
     pub dx: f32,
     pub dy: f32,
     pub delete: bool,
+    /// For rewriting recognised (invisible) text on a scan: the colour of the
+    /// paper around the line and of its ink, as the window sees them.
+    pub cover: Option<[f32; 3]>,
+    pub ink: Option<[f32; 3]>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -908,6 +912,11 @@ fn plan_line(
 /// Edits one or more lines on a page in a single change.
 pub fn edit_lines(doc: &mut Document, page_id: ObjectId, ids: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
     let scan = scan_page(doc, page_id)?;
+    // Recognised text on a scan is invisible: rewriting it must change what the page shows.
+    let hidden = |id: &usize| scan.lines.get(*id).map(|l| l.invisible).unwrap_or(false);
+    if edit.text.is_some() && !ids.is_empty() && ids.iter().all(hidden) {
+        return rewrite_scanned(doc, page_id, &scan, ids, edit);
+    }
     let mut enc = Encoder::new(page_id);
     let mut plan = Plan::default();
     for &id in ids {
@@ -1325,4 +1334,46 @@ pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[Hidden
         add_page_ops(doc, page_id, ops, false)?;
     }
     Ok((placed, notices))
+}
+
+/// Rewrites recognised text on a scanned page. The words of the scan are
+/// pixels, so the old line is covered in the colour of the paper and the new
+/// text is drawn over it, visibly, at the size the line was recognised at.
+fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::Scan, ids: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
+    let text = edit.text.clone().unwrap_or_default();
+    let cover = edit.cover.unwrap_or([1.0, 1.0, 1.0]);
+    let ink = edit.ink.unwrap_or([0.0, 0.0, 0.0]);
+    let lines: Vec<([[f32; 2]; 4], [f32; 2], f32, f32)> = ids.iter().filter_map(|id| scan.lines.get(*id)).map(|l| (l.quad, l.origin, l.angle, l.em)).collect();
+    // The invisible words go: the new text replaces them for searching and copying too.
+    edit_lines(doc, page_id, ids, &LineEdit { delete: true, ..Default::default() })?;
+    let mut notices = Vec::new();
+    for (quad, origin, angle, em) in lines {
+        // A little more than the line's box, so no edge of the old letters shows.
+        let centre = [(quad[0][0] + quad[2][0]) / 2.0, (quad[0][1] + quad[2][1]) / 2.0];
+        let grown: Vec<[f32; 2]> = quad
+            .iter()
+            .map(|p| {
+                let (dx, dy) = (p[0] - centre[0], p[1] - centre[1]);
+                let d = (dx * dx + dy * dy).sqrt().max(1e-3);
+                [p[0] + dx / d * 0.12 * em, p[1] + dy / d * 0.12 * em]
+            })
+            .collect();
+        let mut ops = vec![Operation::new("q", vec![]), Operation::new("rg", cover.iter().map(|v| real(*v)).collect())];
+        for (i, p) in grown.iter().enumerate() {
+            ops.push(Operation::new(if i == 0 { "m" } else { "l" }, vec![real(p[0]), real(p[1])]));
+        }
+        ops.push(Operation::new("h", vec![]));
+        ops.push(Operation::new("f", vec![]));
+        ops.push(Operation::new("Q", vec![]));
+        add_page_ops(doc, page_id, ops, false)?;
+        if text.trim().is_empty() {
+            continue;
+        }
+        let plain = text.chars().all(|c| crate::encoding::win_ansi_byte(c).is_some());
+        let font = if plain { FontChoice::Standard { name: "Helvetica".into() } } else { FontChoice::System { family: "Arial".into(), bold: false, italic: false } };
+        notices.extend(place_text(doc, page_id, &text, &font, em, ink, (origin[0], origin[1]), angle, 0.0, 1.0, false)?);
+    }
+    notices.insert(0, "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.".to_string());
+    notices.dedup();
+    Ok(notices)
 }

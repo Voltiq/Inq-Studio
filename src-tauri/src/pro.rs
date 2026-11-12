@@ -222,6 +222,12 @@ pub async fn ocr_setup() -> Result<OcrSetup, String> {
     off_thread(|| Ok(OcrSetup { languages: ocr::languages()?, max_dimension: ocr::max_dimension() })).await
 }
 
+/// Installs the Windows OCR pack of a language (Windows asks for administrator rights) and returns what is installed then.
+#[tauri::command]
+pub async fn ocr_install(tag: String) -> Result<Vec<ocr::OcrLanguage>, String> {
+    off_thread(move || ocr::install_language(&tag)).await
+}
+
 /// Recognises the text of one page image: the body is `width × height` grey
 /// pixels, the size and language come in headers.
 #[tauri::command]
@@ -230,7 +236,14 @@ pub async fn ocr_recognize(request: Request<'_>) -> Result<ocr::Recognised, Stri
     let height: u32 = header(&request, "x-height")?.parse().map_err(|_| "Bad height")?;
     let lang = header(&request, "x-lang").unwrap_or_default();
     let pixels = body(&request)?.to_vec();
-    off_thread(move || ocr::recognize(&pixels, width, height, Some(lang.as_str()).filter(|l| !l.is_empty()))).await
+    off_thread(move || {
+        if lang == "auto" {
+            ocr::recognize_auto(&pixels, width, height)
+        } else {
+            ocr::recognize(&pixels, width, height, Some(lang.as_str()).filter(|l| !l.is_empty()))
+        }
+    })
+    .await
 }
 
 /// Writes the recognised text of several pages into the document as one change.

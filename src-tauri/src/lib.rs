@@ -150,6 +150,7 @@ pub fn run() {
             pro::pdfa_convert,
             pro::ocr_setup,
             pro::ocr_recognize,
+            pro::ocr_install,
             pro::ocr_apply,
             pro::sig_list,
             pro::sig_identities,

@@ -179,6 +179,9 @@ export interface LineEdit {
   dx?: number;
   dy?: number;
   delete?: boolean;
+  /** For recognised text on a scan: the colour of the paper around the line, and of its ink. */
+  cover?: [number, number, number];
+  ink?: [number, number, number];
 }
 
 export type FontChoice =
@@ -534,7 +537,9 @@ export const api = {
   pdfaConvert: (id: number, part: number) => invoke<{ state: DocState; done: string[]; report: PdfaReport }>("pdfa_convert", { id, part }),
   ocrSetup: () => invoke<{ languages: { tag: string; name: string }[]; maxDimension: number }>("ocr_setup"),
   ocrRecognize: (gray: Uint8Array, width: number, height: number, lang: string) =>
-    invoke<{ lines: OcrLine[]; angle: number | null }>("ocr_recognize", gray, { headers: { "x-width": h(width), "x-height": h(height), "x-lang": h(lang) } }),
+    invoke<{ lines: OcrLine[]; angle: number | null; language: string | null }>("ocr_recognize", gray, { headers: { "x-width": h(width), "x-height": h(height), "x-lang": h(lang) } }),
+  /** Asks Windows to install an OCR language (it shows its administrator prompt). */
+  ocrInstall: (tag: string) => invoke<{ tag: string; name: string }[]>("ocr_install", { tag }),
   ocrApply: (id: number, pages: OcrPage[], lang: string) => invoke<EditResult>("ocr_apply", { id, pages, lang }),
   signatures: (id: number) => invoke<Signatures>("sig_list", { id }),
   identities: () => invoke<Identity[]>("sig_identities"),

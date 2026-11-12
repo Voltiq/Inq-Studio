@@ -662,3 +662,35 @@ fn reads_streams_with_white_space_before_endstream() {
         assert_eq!(String::from_utf8_lossy(&content).trim_end(), body, "declared length {length}");
     }
 }
+
+#[test]
+fn rewriting_recognised_text_changes_what_the_scan_shows() {
+    let mut doc = doc_with(&[&[]]);
+    let pid = pages::page_id(&doc, 0).unwrap();
+    let word = |text: &str, x: f32| ocr::OcrWord { text: text.into(), x, y: 300.0, w: 150.0, h: 40.0 };
+    let page = ocr::OcrPage { page: 0, transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0], lines: vec![ocr::OcrLine { words: vec![word("Scanned", 200.0), word("words", 380.0)] }] };
+    ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap();
+    let before = scan_page(&doc, pid).unwrap();
+    assert!(before.lines[0].invisible);
+    // Recognised lines stay single lines: they are rewritten one at a time.
+    assert!(before.blocks.iter().all(|b| b.lines.len() == 1));
+    let origin = before.lines[0].origin;
+
+    let edit = LineEdit { text: Some("Scanned words, corrected".into()), cover: Some([0.9, 0.9, 0.8]), ink: Some([0.1, 0.1, 0.2]), ..Default::default() };
+    let notices = edit::edit_lines(&mut doc, pid, &[0], &edit).unwrap();
+    assert!(notices[0].contains("scan"), "{notices:?}");
+    let mut buf = Vec::new();
+    doc.save_to(&mut buf).unwrap();
+    let read = Document::load_mem(&buf).unwrap();
+    let after = scan_page(&read, pages::page_id(&read, 0).unwrap()).unwrap();
+    // One visible line with the new text where the old one was, in the colour of the ink …
+    assert_eq!(after.lines.len(), 1, "{:?}", after.lines.iter().map(|l| &l.text).collect::<Vec<_>>());
+    let l = &after.lines[0];
+    assert_eq!(l.text, "Scanned words, corrected");
+    assert!(!l.invisible);
+    assert!((l.origin[0] - origin[0]).abs() < 0.5 && (l.origin[1] - origin[1]).abs() < 0.5);
+    assert!((l.color[2] - 0.2).abs() < 0.01);
+    // … on a patch in the colour of the paper that covers the old line.
+    let patch = after.paths.last().expect("a cover is drawn");
+    assert!(patch.bbox[0] < origin[0] && patch.bbox[2] > origin[0] + 150.0, "{:?}", patch.bbox);
+}

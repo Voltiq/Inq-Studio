@@ -907,7 +907,9 @@ fn paragraphs(lines: &mut [TextLine]) -> Vec<Block> {
             let ok = l1.src == l2.src
                 && l1.editable
                 && l2.editable
-                && l1.invisible == l2.invisible
+                // Recognised text on a scan is rewritten line by line.
+                && !l1.invisible
+                && !l2.invisible
                 && (l1.angle - l2.angle).abs() < 1.0
                 && (l2.em / em) > 0.8
                 && (l2.em / em) < 1.25

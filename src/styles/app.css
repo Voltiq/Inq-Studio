@@ -1611,9 +1611,12 @@ textarea.field-widget {
 .shape-more {
   display: grid;
   place-items: center;
+  flex: none;
   width: 14px;
   height: 28px;
   margin-left: -2px;
+  /* Without this the browser's button padding leaves less room than the chevron needs and pushes it off centre. */
+  padding: 0;
   border: 0;
   border-radius: var(--r-xs);
   background: none;

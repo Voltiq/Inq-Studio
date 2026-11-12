@@ -184,6 +184,9 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
     ],
   }),
   ocr_setup: { languages: [{ tag: "en-GB", name: "English (United Kingdom)" }, { tag: "de-DE", name: "Deutsch (Deutschland)" }], maxDimension: 10000 },
+  ocr_install: () => {
+    throw "The browser preview cannot install anything.";
+  },
   sig_list: { signatures: [signature], emptyFields: [], unsaved: false },
   sig_identities: [{ thumbprint: "AB12", name: "Preview Signer", subject: "CN=Preview Signer", issuer: "Preview Signer", validTo: "2031-01-01T00:00:00Z", expired: false, selfSigned: true }],
   doc_compare: {

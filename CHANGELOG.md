@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.2 — 2026-11-12
+
+### Added
+- **OCR finds the language itself**: with more than one OCR language installed, "Detect automatically" reads
+  the first page with text in each of them and keeps the one that fits for the rest of the document.
+- **Adding an OCR language** from the OCR dialog: pick one (German is first) and Windows downloads its pack
+  after asking for administrator rights. OCR languages are Windows language packs, separate from the
+  language of the interface.
+
+### Fixed
+- **Editing recognised text on a scan showed nothing**: the text OCR adds is invisible, and an edit stayed
+  invisible. Rewriting a recognised line now covers the old line in the colour of the paper and draws the
+  new text over it in the colour of the ink. Recognised text is edited line by line.
+- The chevron in the "More shapes" button sits in the middle.
+
 ## 1.0.1 — 2026-11-11
 
 ### Fixed

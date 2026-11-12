@@ -457,6 +457,15 @@ export const de: Record<string, string> = {
   "Recognising": "Erkenne",
   "so far": "bisher",
 
+  "Detect automatically": "Automatisch erkennen",
+  "Detected: {0}": "Erkannt: {0}",
+  "Add a language to Windows": "Sprache zu Windows hinzufügen",
+  "Install…": "Installieren…",
+  "Windows downloads the language pack and asks for administrator rights. It is a few megabytes and stays installed for every program.":
+    "Windows lädt das Sprachpaket herunter und fragt nach Administratorrechten. Es ist wenige Megabyte groß und bleibt für alle Programme installiert.",
+  "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.":
+    "Dies ist ein Scan: Die alte Zeile wurde in der Farbe des Papiers abgedeckt und der neue Text darüber gezeichnet.",
+
   // ----- PDF/A -----
   "PDF/A — archiving": "PDF/A — Archivierung",
   "Convert to": "Umwandeln in",

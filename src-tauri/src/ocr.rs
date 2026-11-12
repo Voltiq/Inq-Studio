@@ -33,6 +33,9 @@ pub struct Recognised {
     pub lines: Vec<OcrLine>,
     /// Skew of the text in degrees, when the recogniser measured one.
     pub angle: Option<f64>,
+    /// The language it was recognised in, when that was chosen automatically.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -125,7 +128,7 @@ mod engine {
             }
         }
         let angle = result.TextAngle().ok().and_then(|a| a.Value().ok());
-        Ok(Recognised { lines, angle })
+        Ok(Recognised { lines, angle, language: None })
     }
 }
 
@@ -147,6 +150,106 @@ mod engine {
 }
 
 pub use engine::{languages, max_dimension, recognize};
+
+/// Words that are very common in a language and rare in the others.
+const COMMON: [(&str, &[&str]); 10] = [
+    ("de", &["der", "die", "und", "das", "nicht", "ist", "mit", "den", "von", "für", "auf", "dem", "ein", "eine", "sich", "auch", "wird", "sind", "zu", "im"]),
+    ("en", &["the", "and", "of", "to", "is", "that", "for", "with", "this", "are", "was", "be", "by", "on", "not", "have", "from", "or", "as", "at"]),
+    ("fr", &["le", "la", "les", "et", "des", "est", "une", "que", "dans", "pour", "pas", "sur", "avec", "du", "au", "ce", "qui", "sont", "nous", "vous"]),
+    ("es", &["el", "los", "las", "que", "del", "por", "con", "una", "para", "es", "como", "más", "pero", "sus", "se", "al", "lo", "este", "son", "no"]),
+    ("it", &["il", "che", "di", "per", "una", "con", "non", "sono", "della", "gli", "nel", "alla", "più", "come", "anche", "le", "del", "dei", "si", "da"]),
+    ("nl", &["de", "het", "een", "van", "en", "niet", "dat", "voor", "met", "zijn", "op", "te", "aan", "ook", "als", "bij", "wordt", "naar", "om", "er"]),
+    ("pt", &["os", "que", "do", "da", "em", "para", "com", "não", "uma", "por", "mais", "como", "dos", "ao", "das", "são", "foi", "seu", "se", "na"]),
+    ("pl", &["nie", "się", "jest", "na", "to", "że", "do", "jak", "ale", "po", "co", "dla", "od", "przez", "tak", "są", "lub", "oraz", "czy", "być"]),
+    ("sv", &["och", "att", "det", "som", "en", "på", "är", "av", "för", "med", "till", "den", "har", "inte", "om", "ett", "var", "jag", "de", "men"]),
+    ("tr", &["bir", "ve", "bu", "için", "ile", "da", "de", "olarak", "çok", "daha", "gibi", "en", "ne", "var", "ama", "kadar", "olan", "sonra", "ya", "her"]),
+];
+
+/// How much a recognised page reads like the language `tag`: the share of
+/// its words that are among the language's most common ones, and, for
+/// languages without a list, a small credit for every word found.
+fn fits(found: &Recognised, tag: &str) -> f32 {
+    let words: Vec<String> = found.lines.iter().flat_map(|l| &l.words).map(|w| w.text.trim_matches(|c: char| !c.is_alphabetic()).to_lowercase()).filter(|w| !w.is_empty()).collect();
+    if words.is_empty() {
+        return 0.0;
+    }
+    let short = tag.split('-').next().unwrap_or(tag).to_lowercase();
+    match COMMON.iter().find(|(l, _)| *l == short) {
+        Some((_, list)) => words.iter().filter(|w| list.contains(&w.as_str())).count() as f32 / words.len() as f32 + 0.001,
+        None => 0.02,
+    }
+}
+
+/// Recognises a page in every installed language (one per language, not per
+/// region) and keeps the result that reads most like its language.
+pub fn recognize_auto(gray: &[u8], w: u32, h: u32) -> Result<Recognised, String> {
+    let mut tried: Vec<String> = Vec::new();
+    let mut best: Option<(f32, Recognised)> = None;
+    for l in languages()? {
+        let short = l.tag.split('-').next().unwrap_or(&l.tag).to_lowercase();
+        if tried.contains(&short) {
+            continue;
+        }
+        tried.push(short);
+        let Ok(mut found) = recognize(gray, w, h, Some(&l.tag)) else { continue };
+        let score = fits(&found, &l.tag);
+        found.language = Some(l.tag.clone());
+        if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+            best = Some((score, found));
+        }
+    }
+    best.map(|(_, r)| r).ok_or_else(|| "Windows has no OCR language pack installed.".to_string())
+}
+
+/// Asks Windows to install the OCR pack of a language. Windows shows its
+/// administrator prompt; the download comes from Windows Update.
+pub fn install_language(tag: &str) -> Result<Vec<OcrLanguage>, String> {
+    let ok = tag.len() <= 16 && tag.split('-').all(|p| !p.is_empty() && p.len() <= 8 && p.chars().all(|c| c.is_ascii_alphanumeric()));
+    if !ok {
+        return Err("That is not a language tag.".into());
+    }
+    if !cfg!(windows) {
+        return Err("OCR languages are installed through Windows.".into());
+    }
+    let inner = format!("Add-WindowsCapability -Online -Name Language.OCR~~~{tag}~0.0.1.0");
+    let outer = format!("Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-Command','{inner}'");
+    let mut command = std::process::Command::new("powershell");
+    command.args(["-NoProfile", "-Command", &outer]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // No console window of our own.
+        command.creation_flags(0x0800_0000);
+    }
+    let status = command.status().map_err(|e| format!("Windows PowerShell could not be started: {e}"))?;
+    let now = languages()?;
+    if now.iter().any(|l| l.tag.eq_ignore_ascii_case(tag)) {
+        Ok(now)
+    } else if !status.success() {
+        Err("The installation was cancelled or not allowed. It needs administrator rights.".into())
+    } else {
+        Err("Windows did not install the language. It needs administrator rights and a connection to Windows Update; on a managed computer the administrator may have to add it.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(text: &str) -> Recognised {
+        Recognised { lines: vec![OcrLine { words: text.split(' ').map(|w| OcrWord { text: w.into(), x: 0.0, y: 0.0, w: 1.0, h: 1.0 }).collect() }], angle: None, language: None }
+    }
+
+    #[test]
+    fn tells_languages_apart() {
+        let german = page("Der Schüler hat das Zeugnis mit der Note gut erhalten und ist nicht versetzt.");
+        let english = page("The student received the report with a good mark and is not moved up.");
+        assert!(fits(&german, "de-DE") > fits(&german, "en-US"));
+        assert!(fits(&english, "en-GB") > fits(&english, "de-DE"));
+        assert_eq!(fits(&page(""), "de-DE"), 0.0);
+        assert!(install_language("de-DE; rm").is_err());
+    }
+}
 
 /// The font the invisible layer is written in: a standard font when every
 /// character is in its encoding (nothing is embedded then), otherwise an

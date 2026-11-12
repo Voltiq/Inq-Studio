@@ -395,6 +395,28 @@ export function ExportDialog({
 // OCR
 // ---------------------------------------------------------------------------
 
+/** Languages Windows offers OCR packs for, by their own names. */
+const OCR_LANGUAGES = [
+  { tag: "de-DE", name: "Deutsch" },
+  { tag: "en-GB", name: "English" },
+  { tag: "fr-FR", name: "Français" },
+  { tag: "es-ES", name: "Español" },
+  { tag: "it-IT", name: "Italiano" },
+  { tag: "nl-NL", name: "Nederlands" },
+  { tag: "pt-PT", name: "Português" },
+  { tag: "pl-PL", name: "Polski" },
+  { tag: "tr-TR", name: "Türkçe" },
+  { tag: "sv-SE", name: "Svenska" },
+  { tag: "da-DK", name: "Dansk" },
+  { tag: "cs-CZ", name: "Čeština" },
+  { tag: "el-GR", name: "Ελληνικά" },
+  { tag: "ru-RU", name: "Русский" },
+  { tag: "uk-UA", name: "Українська" },
+  { tag: "ja-JP", name: "日本語" },
+  { tag: "zh-CN", name: "中文 (简体)" },
+  { tag: "ko-KR", name: "한국어" },
+];
+
 export function OcrDialog({
   docId,
   pdf,
@@ -415,9 +437,12 @@ export function OcrDialog({
   const { scope, setScope, range, setRange, list } = useScope(pages, current, selected);
   const [setup, setSetup] = useState<{ languages: { tag: string; name: string }[]; maxDimension: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lang, setLang] = useState("");
+  const [lang, setLang] = useState("auto");
+  const [more, setMore] = useState("de-DE");
+  const [installing, setInstalling] = useState(false);
   const [skip, setSkip] = useState(true);
   const [progress, setProgress] = useState<{ done: number; total: number; words: number } | null>(null);
+  const [detected, setDetected] = useState<string | null>(null);
   const [cancel] = useState({ now: false });
   useEffect(() => {
     api
@@ -425,17 +450,21 @@ export function OcrDialog({
       .then((s) => {
         setSetup(s);
         const mine = navigator.language.toLowerCase();
-        const best = s.languages.find((l) => l.tag.toLowerCase() === mine) ?? s.languages.find((l) => l.tag.slice(0, 2).toLowerCase() === mine.slice(0, 2)) ?? s.languages[0];
-        setLang(best?.tag ?? "");
+        // With one language there is nothing to detect.
+        void mine;
+        setLang(s.languages.length === 1 ? s.languages[0].tag : "auto");
       })
       .catch((e) => setError(errorText(e)));
     return () => {
       cancel.now = true;
     };
   }, [cancel]);
+  const missing = OCR_LANGUAGES.filter((m) => !setup?.languages.some((l) => l.tag.slice(0, 2).toLowerCase() === m.tag.slice(0, 2)));
   const run = async () => {
     if (!setup) return;
     const out: OcrPage[] = [];
+    let use = lang;
+    setDetected(null);
     let words = 0;
     let skipped = 0;
     setError(null);
@@ -455,7 +484,12 @@ export function OcrDialog({
         const base = page.getViewport({ scale: 1 });
         const scale = Math.min(300 / 72, (setup.maxDimension - 8) / Math.max(base.width, base.height));
         const canvas = await renderPage(pdf, list[i], scale);
-        const found = await api.ocrRecognize(grayPixels(canvas), canvas.width, canvas.height, lang);
+        const found = await api.ocrRecognize(grayPixels(canvas), canvas.width, canvas.height, use);
+        // The first page with text settles the language for the rest.
+        if (use === "auto" && found.language && found.lines.length) {
+          use = found.language;
+          setDetected(setup.languages.find((l) => l.tag === use)?.name ?? use);
+        }
         if (found.lines.length) {
           // The canvas is the viewport at this scale, rounded down to whole pixels.
           const vp = page.getViewport({ scale });
@@ -469,7 +503,7 @@ export function OcrDialog({
         setProgress(null);
         return;
       }
-      if (await onApply(out, lang)) onClose();
+      if (await onApply(out, use === "auto" ? "" : use)) onClose();
       else setProgress(null);
     } catch (e) {
       setError(errorText(e));
@@ -505,10 +539,39 @@ export function OcrDialog({
         )}
         {setup && setup.languages.length > 0 && (
           <>
-            <Select label={t("Language of the text")} value={lang} onChange={setLang} options={setup.languages.map((l) => ({ value: l.tag, label: l.name }))} helper={t("Languages come from the OCR packs installed in Windows; recognition runs on this computer.")} />
+            <Select label={t("Language of the text")} value={lang} onChange={setLang} options={[...(setup.languages.length > 1 ? [{ value: "auto", label: t("Detect automatically") }] : []), ...setup.languages.map((l) => ({ value: l.tag, label: l.name }))]} helper={detected ? t("Detected: {0}", detected) : t("Languages come from the OCR packs installed in Windows; recognition runs on this computer.")} />
             <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
             <Toggle label={t("Skip pages that already have text")} checked={skip} onChange={setSkip} />
           </>
+        )}
+        {setup && missing.length > 0 && (
+          <div className="row">
+            <Select label={t("Add a language to Windows")} value={missing.some((m) => m.tag === more) ? more : missing[0].tag} onChange={setMore} options={missing.map((m) => ({ value: m.tag, label: m.name }))} />
+            <Button
+              loading={installing}
+              onClick={async () => {
+                const tag = missing.some((m) => m.tag === more) ? more : missing[0].tag;
+                setInstalling(true);
+                setError(null);
+                try {
+                  const languages = await api.ocrInstall(tag);
+                  setSetup({ ...setup, languages });
+                  setLang(languages.length === 1 ? languages[0].tag : "auto");
+                } catch (e) {
+                  setError(errorText(e));
+                } finally {
+                  setInstalling(false);
+                }
+              }}
+            >
+              {t("Install…")}
+            </Button>
+          </div>
+        )}
+        {setup && missing.length > 0 && (
+          <p className="is-muted" style={note}>
+            {t("Windows downloads the language pack and asks for administrator rights. It is a few megabytes and stays installed for every program.")}
+          </p>
         )}
         {progress && (
           <>
