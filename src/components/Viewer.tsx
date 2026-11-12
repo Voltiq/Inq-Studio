@@ -52,6 +52,8 @@ export interface TextStyle {
 export interface ViewerActions extends ExtraActions {
   editLines: (page: number, lines: number[], revision: number, edit: LineEdit) => Promise<boolean>;
   editBlock: (page: number, block: number, revision: number, text: string) => Promise<boolean>;
+  /** Joins a dragged line to the end of another (or, `before`, to its start); dx and dy are the drag in user space. */
+  joinLines: (page: number, target: number, moved: number, before: boolean, dx: number, dy: number, revision: number) => Promise<boolean>;
   addText: (page: number, spec: NewText) => Promise<boolean>;
   addAnnot: (page: number, annot: NewAnnot) => Promise<boolean>;
 }
@@ -66,6 +68,8 @@ const PAD = 24;
 const MAX_CANVAS_PIXELS = 16_000_000;
 const MARKUP: Tool[] = ["highlight", "underline", "strikeout"];
 const SNAP_PX = 6;
+/** How close (in pixels) a dragged line's edge must come to another line's end to join it. */
+const JOIN_PX = 12;
 
 export function Viewer({
   docId,
@@ -82,6 +86,7 @@ export function Viewer({
   tool,
   showLineBoxes,
   snap,
+  join,
   fonts,
   selection,
   onSelect,
@@ -113,6 +118,8 @@ export function Viewer({
   tool: Tool;
   showLineBoxes: boolean;
   snap: boolean;
+  /** Join a line dropped at the end or start of another into one line. */
+  join: boolean;
   fonts: FontSummary[] | null;
   selection: Selection;
   onSelect: (s: Selection) => void;
@@ -319,6 +326,7 @@ export function Viewer({
                 tool={tool}
                 showLineBoxes={showLineBoxes}
                 snap={snap}
+                join={join}
                 fonts={fonts}
                 selection={selection}
                 onSelect={onSelect}
@@ -443,6 +451,7 @@ function PageView({
   tool,
   showLineBoxes,
   snap,
+  join,
   fonts,
   selection,
   onSelect,
@@ -468,6 +477,8 @@ function PageView({
   tool: Tool;
   showLineBoxes: boolean;
   snap: boolean;
+  /** Join a line dropped at the end or start of another into one line. */
+  join: boolean;
   fonts: FontSummary[] | null;
   selection: Selection;
   onSelect: (s: Selection) => void;
@@ -639,7 +650,10 @@ function PageView({
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
   const [move, setMove] = useState<{ x0: number; y0: number; dx: number; dy: number; free: boolean } | null>(null);
   const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
-  const snapTargets = useRef<{ xs: number[]; ys: number[]; left: number; base: number } | null>(null);
+  /** Where a moved line can snap: other lines' left edges and baselines, and the ends it can join. */
+  const snapTargets = useRef<{ xs: number[]; ys: number[]; left: number; base: number; joins: { id: number; before: boolean; x: number; base: number }[] } | null>(null);
+  /** The line the dragged one will join when dropped here. */
+  const [joinTo, setJoinTo] = useState<{ id: number; before: boolean } | null>(null);
   const [ink, setInk] = useState<[number, number][] | null>(null);
   const [mark, setMark] = useState<{ a: Caret; b: Caret; x0: number; y0: number } | null>(null);
   const [pendingText, setPendingText] = useState<{ x: number; y: number } | null>(null);
@@ -745,7 +759,13 @@ function PageView({
       const t = snapTargets.current;
       let gx: number | null = null;
       let gy: number | null = null;
-      if (t && snap && !e.altKey) {
+      // Dropped at the end or the start of another line, the dragged line joins it.
+      const j = t && join && !e.altKey ? t.joins.find((c) => Math.abs(t.left + dx - c.x) < JOIN_PX && Math.abs(t.base + dy - c.base) < JOIN_PX) : undefined;
+      if (t && j) {
+        dx = j.x - t.left;
+        dy = j.base - t.base;
+        gy = j.base;
+      } else if (t && snap && !e.altKey) {
         const nx = t.xs.find((v) => Math.abs(t.left + dx - v) < SNAP_PX);
         if (nx !== undefined) {
           dx = nx - t.left;
@@ -758,6 +778,7 @@ function PageView({
         }
       }
       setGuides({ x: gx, y: gy });
+      setJoinTo(j ? { id: j.id, before: j.before } : null);
       setMove({ ...move, dx, dy });
     }
   };
@@ -821,13 +842,16 @@ function PageView({
     }
     if (move) {
       const m = move;
+      const j = joinTo;
       setMove(null);
+      setJoinTo(null);
       setGuides({ x: null, y: null });
       snapTargets.current = null;
       if (Math.hypot(m.dx, m.dy) > 1 && vp && text && sel) {
         const a = toPdf(m.x0, m.y0);
         const b = toPdf(m.x0 + m.dx, m.y0 + m.dy);
-        await actions.editLines(index, sel.lines.map((l) => l.id), text.revision, { dx: b[0] - a[0], dy: b[1] - a[1] });
+        if (j && sel.lines.length === 1) await actions.joinLines(index, j.id, sel.lines[0].id, j.before, b[0] - a[0], b[1] - a[1], text.revision);
+        else await actions.editLines(index, sel.lines.map((l) => l.id), text.revision, { dx: b[0] - a[0], dy: b[1] - a[1] });
       }
     }
   };
@@ -839,12 +863,22 @@ function PageView({
     const base = (vp.convertToViewportPoint(l.origin[0], l.origin[1]) as number[])[1];
     const xs: number[] = [];
     const ys: number[] = [];
+    const joins: { id: number; before: boolean; x: number; base: number }[] = [];
+    // One line on its own can join another: after its end, or in front of its start, a space apart.
+    const single = selectedIds.size === 1 && l.editable && !l.invisible;
+    const width = own.bbox[2] - own.bbox[0];
     lines.forEach((o, i) => {
       if (selectedIds.has(o.id) || Math.abs(geo[i].angle) > 0.5 || o.invisible) return;
+      const y = (vp.convertToViewportPoint(o.origin[0], o.origin[1]) as number[])[1];
       xs.push(geo[i].bbox[0]);
-      ys.push((vp.convertToViewportPoint(o.origin[0], o.origin[1]) as number[])[1]);
+      ys.push(y);
+      if (single && o.editable) {
+        const gap = 0.28 * Math.max(o.em, l.em) * vp.scale;
+        joins.push({ id: o.id, before: false, x: geo[i].bbox[2] + gap, base: y });
+        joins.push({ id: o.id, before: true, x: geo[i].bbox[0] - gap - width, base: y });
+      }
     });
-    snapTargets.current = Math.abs(own.angle) > 0.5 ? null : { xs, ys, left: own.bbox[0], base };
+    snapTargets.current = Math.abs(own.angle) > 0.5 ? null : { xs, ys, left: own.bbox[0], base, joins };
     setMove({ x0: x, y0: y, dx: 0, dy: 0, free });
   };
 
@@ -998,6 +1032,19 @@ function PageView({
               );
             })}
 
+          {joinTo && geo[joinTo.id] && (
+            <div
+              className="join-target"
+              style={{
+                left: geo[joinTo.id].bbox[0] - 3,
+                top: geo[joinTo.id].bbox[1] - 3,
+                width: geo[joinTo.id].bbox[2] - geo[joinTo.id].bbox[0] + 6,
+                height: geo[joinTo.id].bbox[3] - geo[joinTo.id].bbox[1] + 6,
+              }}
+            >
+              <span className="join-badge">{t("Joins into one line")}</span>
+            </div>
+          )}
           {guides.x !== null && <div className="snap-guide is-vertical" style={{ left: guides.x }} />}
           {guides.y !== null && <div className="snap-guide is-horizontal" style={{ top: guides.y }} />}
 

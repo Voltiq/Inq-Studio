@@ -486,6 +486,13 @@ export const es: Record<string, string> = {
   "The manual explains every tool and opens with F1. This tour can be started again from the same menu. Settings are next to it.": "El manual explica cada herramienta y se abre con F1. El recorrido se puede iniciar de nuevo desde el mismo menú. Los ajustes están al lado.",
 
   "Save as…": "Guardar como…",
+  "Join lines dropped next to each other": "Unir las líneas que se sueltan una junto a otra",
+  "Drag a line to the end or the start of another line and it joins it into one line; each word keeps its font. Hold Alt to place it freely.": "Arrastre una línea al final o al principio de otra y se unen en una sola línea; cada palabra conserva su fuente. Mantenga Alt para colocarla libremente.",
+  "Joins into one line": "Se une en una sola línea",
+  "Join lines": "Unir líneas",
+  "A line cannot be joined to itself.": "Una línea no se puede unir consigo misma.",
+  "Text recognised on a scan cannot be joined; rewrite the line instead.": "El texto reconocido en un escaneo no se puede unir; reescriba la línea en su lugar.",
+  "Only lines that run in the same direction can be joined.": "Solo se pueden unir líneas que van en la misma dirección.",
   "Realign text automatically": "Realinear el texto automáticamente",
   "When a line of a paragraph gets shorter or longer, the words after it are wrapped again; when a line is deleted, the lines below move up. Other paragraphs and the rest of the page stay where they are.": "Cuando una línea de un párrafo se acorta o se alarga, las palabras que la siguen se vuelven a distribuir; cuando se elimina una línea, las de debajo suben. Los demás párrafos y el resto de la página se quedan donde están.",
 

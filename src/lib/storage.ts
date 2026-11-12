@@ -18,6 +18,8 @@ export interface Settings {
   snap: boolean;
   /** Keep paragraphs in shape when one of their lines is rewritten or deleted. */
   reflow: boolean;
+  /** A line dropped at the end or start of another joins it. */
+  joinLines: boolean;
   /** Ask at start whether to install a newer version; otherwise only a short notice appears. */
   updatePrompt: boolean;
   /** Language of the interface; "system" follows Windows. */
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   saveMode: "auto",
   snap: true,
   reflow: true,
+  joinLines: true,
   updatePrompt: true,
   language: "system",
   timestampUrl: "",

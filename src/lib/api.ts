@@ -566,6 +566,8 @@ export const api = {
     invoke<EditResult>("text_edit", { id, page, revision, lines, edit }),
   editBlock: (id: number, page: number, revision: number, block: number, text: string) =>
     invoke<EditResult>("block_edit", { id, page, revision, block, text }),
+  joinLines: (id: number, page: number, revision: number, target: number, moved: number, before: boolean, dx: number, dy: number) =>
+    invoke<EditResult>("text_join", { id, page, revision, target, moved, before, dx, dy }),
   addText: (id: number, page: number, spec: NewText) => invoke<EditResult>("text_add", { id, page, spec }),
   rotate: (id: number, pages: number[], delta: number) => invoke<DocState>("pages_rotate", { id, pages, delta }),
   deletePages: (id: number, pages: number[]) => invoke<DocState>("pages_delete", { id, pages }),

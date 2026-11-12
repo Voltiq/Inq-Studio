@@ -517,6 +517,13 @@ export const de: Record<string, string> = {
     "Das Handbuch erklärt jedes Werkzeug und öffnet sich mit F1. Die Tour lässt sich aus demselben Menü erneut starten. Daneben liegen die Einstellungen.",
 
   "Save as…": "Speichern unter…",
+  "Join lines dropped next to each other": "Nebeneinander abgelegte Zeilen verbinden",
+  "Drag a line to the end or the start of another line and it joins it into one line; each word keeps its font. Hold Alt to place it freely.": "Ziehen Sie eine Zeile an das Ende oder den Anfang einer anderen, verbinden sich beide zu einer Zeile; jedes Wort behält seine Schrift. Mit gedrückter Alt-Taste frei ablegen.",
+  "Joins into one line": "Wird zu einer Zeile verbunden",
+  "Join lines": "Zeilen verbinden",
+  "A line cannot be joined to itself.": "Eine Zeile lässt sich nicht mit sich selbst verbinden.",
+  "Text recognised on a scan cannot be joined; rewrite the line instead.": "Auf einem Scan erkannter Text lässt sich nicht verbinden; schreiben Sie die Zeile stattdessen neu.",
+  "Only lines that run in the same direction can be joined.": "Nur Zeilen in derselben Richtung lassen sich verbinden.",
   "Realign text automatically": "Text automatisch neu ausrichten",
   "When a line of a paragraph gets shorter or longer, the words after it are wrapped again; when a line is deleted, the lines below move up. Other paragraphs and the rest of the page stay where they are.":
     "Wird eine Zeile eines Absatzes kürzer oder länger, werden die Wörter danach neu umbrochen; wird eine Zeile gelöscht, rücken die Zeilen darunter nach oben. Andere Absätze und der Rest der Seite bleiben, wo sie sind.",

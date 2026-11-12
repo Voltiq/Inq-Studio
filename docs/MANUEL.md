@@ -65,6 +65,10 @@ Choisissez **Modifier le texte et les images** (`E`). Chaque ligne reçoit un co
 - **Faites glisser** une ligne pour la déplacer ; elle s’aligne sur les bords et les lignes de base des
   autres lignes (`Alt` déplace librement). Les flèches déplacent finement. `Suppr` la supprime. `Maj`+clic
   ou tracez un cadre pour sélectionner plusieurs lignes.
+- **Déposez** une ligne à la fin ou au début d’une autre : les deux **se joignent en une seule ligne**. La
+  ligne cible est encadrée pendant le glissement, et chaque mot garde sa police, sa taille et sa couleur.
+  Maintenez `Alt` pour poser une ligne à côté d’une autre sans les joindre (*Réglages › Joindre les lignes
+  déposées côte à côte*).
 - L’inspecteur change la taille, la couleur et la police.
 
 Avec **Réaligner le texte automatiquement** activé dans les Réglages (c’est le cas par défaut), un

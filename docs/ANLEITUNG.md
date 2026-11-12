@@ -60,6 +60,10 @@ Mit dem Werkzeug **Auswählen** (`V`) wird Text markiert und kopiert; die **Hand
 - **Ziehen** verschiebt eine Zeile; sie rastet an Kanten und Grundlinien anderer Zeilen ein (`Alt` verschiebt
   frei). Die Pfeiltasten verschieben fein. `Entf` löscht. `Umschalt`-Klick oder ein aufgezogener Rahmen wählt
   mehrere Zeilen.
+- **Legen** Sie eine Zeile am Ende oder am Anfang einer anderen ab, **verbinden sich beide zu einer Zeile**:
+  Die Zielzeile wird beim Ziehen umrandet, und jedes Wort behält Schrift, Größe und Farbe. Mit `Alt`
+  liegt eine Zeile neben einer anderen, ohne sich zu verbinden (*Einstellungen › Nebeneinander abgelegte
+  Zeilen verbinden*).
 - Der Inspektor ändert Größe, Farbe und Schrift.
 
 Ist in den Einstellungen **Text automatisch neu ausrichten** eingeschaltet (das ist die Vorgabe), behält ein

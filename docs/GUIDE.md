@@ -55,6 +55,9 @@ Choose **Edit text and images** (`E`). Every line gets an outline.
   re-wrapped to its column when you confirm with `Ctrl+Enter`.
 - **Drag** a line to move it; it snaps to the edges and baselines of other lines (`Alt` moves freely). Arrow
   keys nudge. `Delete` removes it. `Shift`-click or drag a box to select several lines.
+- **Drop** a line at the end or the start of another line and the two **join into one line**: the target
+  is outlined while you drag, and each word keeps its own font, size and colour. Hold `Alt` to place a
+  line next to another without joining (*Settings › Join lines dropped next to each other*).
 - The inspector changes size, colour and font.
 
 With **Realign text automatically** switched on in Settings (it is by default), a paragraph keeps its shape

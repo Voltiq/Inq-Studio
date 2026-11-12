@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 — 2026-11-12
+
+### Added
+- **Joining lines by dragging**: drop a line at the end or the start of another line and the two become one
+  line. The target is outlined while you drag, and every word keeps its own font, size and colour. Hold
+  `Alt` to place a line next to another without joining, or switch it off under *Settings › Join lines
+  dropped next to each other*.
+
+### For contributors
+- The browser preview's stand-in engine knows the sample page's text lines, so the edit tool can select and
+  drag them there.
+
 ## 1.4.1 — 2026-11-12
 
 ### Fixed

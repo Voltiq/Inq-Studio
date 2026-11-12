@@ -123,6 +123,12 @@ export function SettingsDialog({
           onChange={(snap) => onChange({ ...settings, snap })}
         />
         <Toggle
+          label={t("Join lines dropped next to each other")}
+          description={t("Drag a line to the end or the start of another line and it joins it into one line; each word keeps its font. Hold Alt to place it freely.")}
+          checked={settings.joinLines}
+          onChange={(joinLines) => onChange({ ...settings, joinLines })}
+        />
+        <Toggle
           label={t("Realign text automatically")}
           description={t("When a line of a paragraph gets shorter or longer, the words after it are wrapped again; when a line is deleted, the lines below move up. Other paragraphs and the rest of the page stay where they are.")}
           checked={settings.reflow}

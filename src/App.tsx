@@ -540,6 +540,12 @@ export default function App() {
         if (ok) setSelection(null);
         return ok;
       },
+      joinLines: async (page, target, moved, before, dx, dy, revision) => {
+        if (id == null) return false;
+        const ok = await run(id, () => api.joinLines(id, page, revision, target, moved, before, dx, dy));
+        if (ok) setSelection(null);
+        return ok;
+      },
       addText: async (page, spec) => (id == null ? false : run(id, () => api.addText(id, page, spec))),
       addAnnot: async (page, annot) => (id == null ? false : run(id, () => api.addAnnot(id, page, annot))),
       updateAnnot: async (page, index, change) => {
@@ -1159,6 +1165,7 @@ export default function App() {
                 tool={tool}
                 showLineBoxes={settings.showLineBoxes}
                 snap={settings.snap}
+                join={settings.joinLines}
                 fonts={active.fonts}
                 selection={selection}
                 onSelect={setSelection}

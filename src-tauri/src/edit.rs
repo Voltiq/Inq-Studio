@@ -1024,7 +1024,7 @@ fn reflow_line(doc: &mut Document, page_id: ObjectId, scan: &Scan, block_id: usi
     }
     new.push_str(&rest);
     let new = new.trim_start().to_string();
-    rewrap(doc, page_id, scan, block, from, to, &new).map(Some)
+    rewrap(doc, page_id, scan, block, from, to, &new, None, true).map(Some)
 }
 
 #[cfg(test)]
@@ -1161,13 +1161,75 @@ pub fn edit_block(doc: &mut Document, page_id: ObjectId, block_id: usize, text: 
     let scan = scan_page(doc, page_id)?;
     let block = scan.blocks.get(block_id).ok_or("This paragraph no longer exists. Refresh and try again.")?.clone();
     let last = block.lines.len() - 1;
-    rewrap(doc, page_id, &scan, &block, 0, last, text)
+    rewrap(doc, page_id, &scan, &block, 0, last, text, None, true)
+}
+
+/// Joins two lines into one. `moved` was dropped at the end of `target`, or
+/// at its start when `before` is set; `shift` is how far it was dragged, in
+/// user space. The text of both, separated by a space, is drawn as a single
+/// line, and every word keeps its own font, size and colour.
+pub fn join_lines(doc: &mut Document, page_id: ObjectId, target: usize, moved: usize, before: bool, shift: (f32, f32)) -> Result<Vec<String>, String> {
+    let scan = scan_page(doc, page_id)?;
+    let gone = || "This line no longer exists. Refresh and try again.".to_string();
+    let (t, m) = (scan.lines.get(target).ok_or_else(gone)?, scan.lines.get(moved).ok_or_else(gone)?);
+    if target == moved {
+        return Err("A line cannot be joined to itself.".into());
+    }
+    if t.invisible || m.invisible {
+        return Err("Text recognised on a scan cannot be joined; rewrite the line instead.".into());
+    }
+    if (t.angle - m.angle).abs() > 1.0 {
+        return Err("Only lines that run in the same direction can be joined.".into());
+    }
+    // The line that comes first gives the start; dropped before, that is where the moved line landed.
+    let (first, second, origin) = if before { (moved, target, Some([m.origin[0] + shift.0, m.origin[1] + shift.1])) } else { (target, moved, None) };
+    let (a, b) = (&scan.lines[first], &scan.lines[second]);
+    let mut text = String::new();
+    let mut char_src: Vec<Option<(usize, usize)>> = Vec::new();
+    for (ci, c) in a.text.chars().enumerate() {
+        text.push(c);
+        char_src.push(Some((first, ci)));
+    }
+    if !a.text.ends_with(' ') && !b.text.starts_with(' ') {
+        text.push(' ');
+        char_src.push(None);
+    }
+    for (ci, c) in b.text.chars().enumerate() {
+        text.push(c);
+        char_src.push(Some((second, ci)));
+    }
+    // A one-line "paragraph" so wide that nothing wraps.
+    let block = crate::interp::Block {
+        id: usize::MAX,
+        lines: vec![first, second],
+        text: text.clone(),
+        align: "left".into(),
+        width: 1.0e9,
+        leading: a.em * 1.2,
+        quad: a.quad,
+        first_x: 0.0,
+        left: 0.0,
+        char_src,
+    };
+    rewrap(doc, page_id, &scan, &block, 0, 1, &text, origin, false)
 }
 
 /// Replaces the lines `from..=to` of a paragraph (indexes within the block)
 /// with `text`, wrapped to the paragraph's column. Lines of the paragraph
 /// below `to` keep their text and move by the lines won or lost.
-fn rewrap(doc: &mut Document, page_id: ObjectId, scan: &Scan, block: &crate::interp::Block, from: usize, to: usize, text: &str) -> Result<Vec<String>, String> {
+/// `origin` moves the start of the first line elsewhere; `report` says when the line count changed.
+#[allow(clippy::too_many_arguments)]
+fn rewrap(
+    doc: &mut Document,
+    page_id: ObjectId,
+    scan: &Scan,
+    block: &crate::interp::Block,
+    from: usize,
+    to: usize,
+    text: &str,
+    origin: Option<[f32; 2]>,
+    report: bool,
+) -> Result<Vec<String>, String> {
     for &li in &block.lines {
         if !scan.lines[li].editable {
             return Err(scan.lines[li].note.clone().unwrap_or_else(|| "This text cannot be edited.".into()));
@@ -1261,7 +1323,7 @@ fn rewrap(doc: &mut Document, page_id: ObjectId, scan: &Scan, block: &crate::int
 
     // Place lines in the frame of the paragraph's first line.
     let (d, u) = (fr.dir, fr.up);
-    let o = scan.lines[block.lines[0]].origin;
+    let o = origin.unwrap_or(scan.lines[block.lines[0]].origin);
     let mut placed: Vec<(Vec<Item>, (f32, f32))> = Vec::new();
     let mut new_para = true;
     let count = laid.len();
@@ -1312,7 +1374,7 @@ fn rewrap(doc: &mut Document, page_id: ObjectId, scan: &Scan, block: &crate::int
     }
     let mut notices = enc.finish(doc)?;
     plan.apply(doc, page_id, scan)?;
-    if !single && whole {
+    if !single && whole && report {
         let n = placed.iter().filter(|p| !p.0.is_empty()).count();
         if n != block.lines.len() {
             notices.push(format!("The paragraph now runs over {n} lines instead of {}.", block.lines.len()));

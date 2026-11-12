@@ -102,6 +102,7 @@ pub fn run() {
             store::system_fonts,
             store::text_edit,
             store::block_edit,
+            store::text_join,
             store::text_add,
             store::pages_rotate,
             store::pages_delete,

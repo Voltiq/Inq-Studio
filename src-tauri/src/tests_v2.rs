@@ -547,3 +547,62 @@ fn real_file_v2() {
         }
     }
 }
+
+/// Two lines far apart: a regular one and a bold, larger one.
+fn two_lines_doc() -> Document {
+    let mut doc = Document::with_version("1.7");
+    let f1 = helvetica(&mut doc, "Helvetica");
+    let f2 = helvetica(&mut doc, "Helvetica-Bold");
+    let ops = vec![
+        op("BT", vec![]),
+        op("Tf", vec!["F1".into(), 12.into()]),
+        op("Td", vec![72.into(), 700.into()]),
+        op("Tj", vec![s("Inq Studio")]),
+        op("ET", vec![]),
+        op("BT", vec![]),
+        op("Tf", vec!["F2".into(), 14.into()]),
+        op("Td", vec![100.into(), 500.into()]),
+        op("Tj", vec![s("joins lines.")]),
+        op("ET", vec![]),
+    ];
+    page_doc(&mut doc, ops, dictionary! { "F1" => f1, "F2" => f2 }, dictionary! {});
+    doc
+}
+
+#[test]
+fn a_line_dropped_after_another_joins_it() {
+    let mut doc = two_lines_doc();
+    let pid = first_page(&doc);
+    let scan = scan_page(&doc, pid).unwrap();
+    let target = scan.lines.iter().find(|l| l.text == "Inq Studio").unwrap().id;
+    let moved = scan.lines.iter().find(|l| l.text == "joins lines.").unwrap().id;
+    edit::join_lines(&mut doc, pid, target, moved, false, (0.0, 0.0)).unwrap();
+    let doc = reload(&mut doc);
+    let scan = scan_page(&doc, first_page(&doc)).unwrap();
+    let texts: Vec<&str> = scan.lines.iter().map(|l| l.text.as_str()).filter(|t| !t.is_empty()).collect();
+    assert_eq!(texts, vec!["Inq Studio joins lines."]);
+    let l = &scan.lines[0];
+    assert!((l.origin[0] - 72.0).abs() < 0.01 && (l.origin[1] - 700.0).abs() < 0.01, "stays where the target was: {:?}", l.origin);
+    // Each part keeps its own look.
+    assert!(l.spans.len() >= 2, "{:?}", l.spans.len());
+    let bold = l.spans.iter().find(|sp| sp.bold).expect("the bold part");
+    assert!((bold.size - 14.0).abs() < 0.01);
+    assert!(l.spans.iter().any(|sp| !sp.bold && (sp.size - 12.0).abs() < 0.01));
+}
+
+#[test]
+fn a_line_dropped_before_another_joins_in_front() {
+    let mut doc = two_lines_doc();
+    let pid = first_page(&doc);
+    let scan = scan_page(&doc, pid).unwrap();
+    let target = scan.lines.iter().find(|l| l.text == "joins lines.").unwrap().id;
+    let moved = scan.lines.iter().find(|l| l.text == "Inq Studio").unwrap().id;
+    // Dragged down and left to sit in front of the bold line.
+    edit::join_lines(&mut doc, pid, target, moved, true, (-40.0, -200.0)).unwrap();
+    let scan = scan_page(&doc, pid).unwrap();
+    let lines: Vec<_> = scan.lines.iter().filter(|l| !l.text.is_empty()).collect();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].text, "Inq Studio joins lines.");
+    assert!((lines[0].origin[0] - 32.0).abs() < 0.01 && (lines[0].origin[1] - 500.0).abs() < 0.01, "{:?}", lines[0].origin);
+    assert!(edit::join_lines(&mut doc, pid, 0, 0, false, (0.0, 0.0)).is_err());
+}

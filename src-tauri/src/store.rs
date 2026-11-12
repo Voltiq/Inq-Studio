@@ -912,6 +912,32 @@ pub async fn text_edit(
     .await
 }
 
+/// Joins a dragged line to the end (or, `before`, the start) of another.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn text_join(
+    store: State<'_, Store>,
+    id: u32,
+    page: usize,
+    revision: u64,
+    target: usize,
+    moved: usize,
+    before: bool,
+    dx: f32,
+    dy: f32,
+) -> Result<EditResult, String> {
+    let store = store.inner().clone();
+    off_thread(move || {
+        store.check_revision(id, revision)?;
+        let (state, notices) = store.mutate(id, "Join lines".to_string(), |doc| {
+            let pid = pages::page_id(doc, page)?;
+            edit::join_lines(doc, pid, target, moved, before, (dx, dy))
+        })?;
+        Ok(EditResult { state, notice: (!notices.is_empty()).then(|| notices.join(" ")) })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn block_edit(
     store: State<'_, Store>,

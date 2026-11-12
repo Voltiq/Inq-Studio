@@ -645,6 +645,28 @@
   height: 1px;
 }
 
+/* The line a dragged line will join when dropped. */
+.join-target {
+  position: absolute;
+  border: 1.5px solid #ff3d7f;
+  border-radius: 4px;
+  background: color-mix(in oklab, #ff3d7f 10%, transparent);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.join-badge {
+  position: absolute;
+  left: -1.5px;
+  bottom: calc(100% + 4px);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #ff3d7f;
+  color: #fff;
+  font: 600 10.5px/1.4 var(--font-body, system-ui);
+  white-space: nowrap;
+}
+
 .annot-box {
   position: absolute;
   border-radius: 3px;

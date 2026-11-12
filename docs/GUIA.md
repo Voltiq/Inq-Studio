@@ -62,6 +62,10 @@ Elija **Editar texto e imágenes** (`E`). Cada línea recibe un contorno.
 - **Arrastre** una línea para moverla; se ajusta a los bordes y líneas base de otras líneas (`Alt` mueve
   libremente). Las flechas desplazan poco a poco. `Supr` la elimina. `Mayús`+clic o arrastre un recuadro
   para seleccionar varias líneas.
+- **Suelte** una línea al final o al principio de otra y ambas **se unen en una sola línea**: la línea
+  de destino se resalta mientras arrastra, y cada palabra conserva su fuente, tamaño y color. Mantenga
+  `Alt` para dejar una línea junto a otra sin unirlas (*Ajustes › Unir las líneas que se sueltan una junto
+  a otra*).
 - El inspector cambia el tamaño, el color y la fuente.
 
 Con **Realinear el texto automáticamente** activado en Ajustes (lo está de forma predeterminada), un párrafo
