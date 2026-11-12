@@ -18,6 +18,8 @@ export interface Settings {
   snap: boolean;
   /** Keep paragraphs in shape when one of their lines is rewritten or deleted. */
   reflow: boolean;
+  /** Ask at start whether to install a newer version; otherwise only a short notice appears. */
+  updatePrompt: boolean;
   /** Language of the interface; "system" follows Windows. */
   language: "system" | "en" | "de";
   /** RFC 3161 timestamp server for signatures; empty for none. */
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   saveMode: "auto",
   snap: true,
   reflow: true,
+  updatePrompt: true,
   language: "system",
   timestampUrl: "",
 };

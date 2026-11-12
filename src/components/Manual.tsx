@@ -105,6 +105,52 @@ function inline(text: string): ReactNode[] {
   return out;
 }
 
+/** Parsed Markdown as elements; headings of the first level are left to the caller. */
+export function MarkdownBlocks({ blocks }: { blocks: Block[] }) {
+  return (
+    <>
+      {blocks.map((b, i) => {
+        if (b.kind === "heading") {
+          if (b.level === 1) return null;
+          return b.level === 2 ? (
+            <h3 key={i} id={b.id} className="manual-h2">
+              {inline(b.text)}
+            </h3>
+          ) : (
+            <h4 key={i} id={b.id} className="manual-h3">
+              {inline(b.text)}
+            </h4>
+          );
+        }
+        if (b.kind === "paragraph") return <p key={i}>{inline(b.text)}</p>;
+        if (b.kind === "list") {
+          const List = b.ordered ? "ol" : "ul";
+          return (
+            <List key={i}>
+              {b.items.map((item, n) => (
+                <li key={n}>{inline(item)}</li>
+              ))}
+            </List>
+          );
+        }
+        return (
+          <table key={i} className="manual-table">
+            <tbody>
+              {b.rows.map((row, n) => (
+                <tr key={n}>
+                  {row.map((cell, k) => (
+                    <td key={k}>{inline(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      })}
+    </>
+  );
+}
+
 export function ManualDialog({ onClose }: { onClose: () => void }) {
   // The pointer to the other language's file means nothing inside the app.
   const blocks = useMemo(() => parseManual((currentLanguage() === "de" ? german : english).replace(/\s*\*[^*]*\]\([^)]*\.md\)[^*]*\*/, "")), []);
@@ -144,44 +190,7 @@ export function ManualDialog({ onClose }: { onClose: () => void }) {
           ))}
         </nav>
         <div ref={body} className="manual-text" tabIndex={0} data-autofocus onScroll={onScroll}>
-          {blocks.map((b, i) => {
-            if (b.kind === "heading") {
-              if (b.level === 1) return null;
-              return b.level === 2 ? (
-                <h3 key={i} id={b.id} className="manual-h2">
-                  {inline(b.text)}
-                </h3>
-              ) : (
-                <h4 key={i} id={b.id} className="manual-h3">
-                  {inline(b.text)}
-                </h4>
-              );
-            }
-            if (b.kind === "paragraph") return <p key={i}>{inline(b.text)}</p>;
-            if (b.kind === "list") {
-              const List = b.ordered ? "ol" : "ul";
-              return (
-                <List key={i}>
-                  {b.items.map((item, n) => (
-                    <li key={n}>{inline(item)}</li>
-                  ))}
-                </List>
-              );
-            }
-            return (
-              <table key={i} className="manual-table">
-                <tbody>
-                  {b.rows.map((row, n) => (
-                    <tr key={n}>
-                      {row.map((cell, k) => (
-                        <td key={k}>{inline(cell)}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            );
-          })}
+          <MarkdownBlocks blocks={blocks} />
         </div>
       </div>
     </Modal>

@@ -14,8 +14,11 @@ ausführen* wählen.
 Danach öffnet sich ein PDF über *Öffnen mit* im Explorer in Inq Studio; dort lässt es sich auch als
 Standard festlegen.
 
-Inq Studio sucht einmal am Tag nach einer neuen Version und meldet sie. *Einstellungen › Updates* prüft
-sofort und installiert. Updates sind signiert; die Signatur wird geprüft, bevor etwas installiert wird.
+Inq Studio sucht bei jedem Start nach einer neuen Version. Gibt es eine, fragt es, ob sie installiert werden
+soll: **Jetzt aktualisieren**, **Später** (es fragt beim nächsten Start wieder) oder **Diese Version
+überspringen** (es fragt erst bei der Version danach wieder). Mit *Beim Start nicht mehr fragen* erscheint
+statt der Frage nur ein kurzer Hinweis; derselbe Schalter steht in den Einstellungen. *Einstellungen ›
+Updates* prüft sofort und installiert. Updates sind signiert; die Signatur wird geprüft, bevor etwas installiert wird.
 
 ## Erste Schritte
 
@@ -181,8 +184,8 @@ oder den Text als Textdatei. `Strg+P` druckt.
 
 Sprache (Englisch, Deutsch; gilt nach einem Neustart), Design, automatisches Ausrichten von Text, Zoom, Einheiten, Ihr Verfassername, die Art
 des Speicherns, der Zeitstempelserver, Updates und der Ort der Protokolldatei. Ihre Dokumente bleiben auf
-Ihrem Computer: Inq Studio lädt nichts hoch. Die einzigen Verbindungen sind die tägliche Prüfung auf eine
-neue Version und, falls eingetragen, der Zeitstempelserver — der einen Hashwert erhält, nie das Dokument.
+Ihrem Computer: Inq Studio lädt nichts hoch. Die einzigen Verbindungen sind die Prüfung auf eine neue
+Version beim Start und, falls eingetragen, der Zeitstempelserver — der einen Hashwert erhält, nie das Dokument.
 
 Meldungen aus der PDF-Engine (manche Fehlertexte und Hinweise) erscheinen teilweise noch auf Englisch.
 

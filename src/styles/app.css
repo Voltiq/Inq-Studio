@@ -2553,3 +2553,30 @@ select.field-widget option {
   white-space: nowrap;
   padding-right: var(--space-200);
 }
+
+/* ----- Update question ----- */
+
+.update-notes {
+  max-height: 16rem;
+  padding: var(--space-150) var(--space-200);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  font-size: var(--font-size-small);
+}
+
+.update-notes > :first-child {
+  margin-top: 0;
+}
+
+.update-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-100);
+  color: var(--text-warning, var(--warning));
+}
+
+.update-warning svg {
+  flex: none;
+  margin-top: 0.1875rem;
+}

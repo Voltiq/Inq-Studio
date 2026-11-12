@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 — 2026-11-12
+
+### Added
+- **Inq Studio asks about updates**: it looks for a newer version every time it starts and, when there is
+  one, asks whether to install it. *Update now* installs and restarts, *Later* asks again at the next
+  start, *Skip this version* waits for the one after it. Tick *Don't ask at start* (or switch off
+  *Settings › Ask about updates at start*) to get a short notice instead.
+
+### Changed
+- The check for a new version runs at every start, not once a day.
+
 ## 1.2.0 — 2026-11-12
 
 ### Added

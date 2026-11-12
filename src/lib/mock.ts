@@ -216,7 +216,10 @@ export function installMock(): string[] {
       // Window, dialog and plugin calls: nothing happens, nothing is picked.
       if (cmd.startsWith("plugin:")) {
         if (cmd === "plugin:app|version") return "1.0.0";
-        if (cmd === "plugin:updater|check") return null;
+        if (cmd === "plugin:updater|check") {
+          if (typeof location === "undefined" || !location.search.includes("update")) return null;
+          return { rid: 1, currentVersion: "1.0.0", version: "9.9.9", body: "### Added\n- **Something new**: what it does, in a sentence.\n\n### Fixed\n- A thing that went wrong before." };
+        }
         return null;
       }
       if (cmd in answers) {

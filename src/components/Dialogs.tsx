@@ -3,10 +3,12 @@ import { getVersion } from "@tauri-apps/api/app";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { CloudDownload, FolderOpen, KeyRound, RefreshCw, TriangleAlert } from "lucide-react";
 import { api, errorText } from "../lib/api";
-import { findUpdate, installUpdate, type Update } from "../lib/updates";
+import { findUpdate, installUpdate, skipVersion, type Update } from "../lib/updates";
+import { MarkdownBlocks, parseManual } from "./Manual";
+import { ProgressBar } from "./ui/Feedback";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
-import { Select, TextField, Toggle } from "./ui/Field";
+import { Checkbox, Select, TextField, Toggle } from "./ui/Field";
 import type { Settings } from "../lib/storage";
 import type { ThemePreference } from "../lib/types";
 import { t } from "../lib/i18n";
@@ -149,7 +151,7 @@ export function SettingsDialog({
                     ? t("Installing the update…")
                     : updateState === "failed"
                       ? t("The update check did not work")
-                      : t("Checks for a new version once a day")}
+                      : t("Checks for a new version every time it starts")}
               <small>
                 {updateState === "found"
                   ? t("It installs on its own and Inq Studio starts again. Save your documents first.")
@@ -167,6 +169,12 @@ export function SettingsDialog({
             )}
           </div>
         </div>
+        <Toggle
+          label={t("Ask about updates at start")}
+          description={t("When a newer version is out, Inq Studio asks at start whether to install it. Switched off, it only shows a short notice.")}
+          checked={settings.updatePrompt}
+          onChange={(updatePrompt) => onChange({ ...settings, updatePrompt })}
+        />
         <div className="settings-block">
           <p className="eyebrow">{t("Diagnostics")}</p>
           <div className="settings-line">
@@ -192,6 +200,84 @@ export function SettingsDialog({
           {t("Inq Studio")}{version ? ` ${version}` : ""}{t(". Your documents stay on this computer: nothing is uploaded.")}
         </p>
       </div>
+    </Modal>
+  );
+}
+
+/** Asked at start when a newer version is out. */
+export function UpdateDialog({
+  update,
+  unsaved,
+  onQuiet,
+  onClose,
+}: {
+  update: Update;
+  /** Documents with changes that an update would throw away. */
+  unsaved: number;
+  /** The user ticked that the question should not come at start any more. */
+  onQuiet: () => void;
+  onClose: () => void;
+}) {
+  const [quiet, setQuiet] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const notes = parseManual(update.body ?? "");
+  const leave = (skip: boolean) => {
+    if (skip) skipVersion(update.version);
+    if (quiet) onQuiet();
+    onClose();
+  };
+  const install = async () => {
+    if (quiet) onQuiet();
+    setInstalling(true);
+    setError(null);
+    try {
+      await installUpdate(update, setProgress);
+    } catch (e) {
+      setInstalling(false);
+      setError(errorText(e));
+    }
+  };
+  return (
+    <Modal
+      title={t("Inq Studio {0} is available", update.version)}
+      titleIcon={<CloudDownload size={18} aria-hidden="true" />}
+      width="medium"
+      required={installing}
+      closeOnBlanket={false}
+      onClose={() => leave(false)}
+      footer={
+        <>
+          <Button appearance="subtle" disabled={installing} onClick={() => leave(true)}>
+            {t("Skip this version")}
+          </Button>
+          <Button disabled={installing} onClick={() => leave(false)}>
+            {t("Later")}
+          </Button>
+          <Button appearance="primary" iconBefore={CloudDownload} loading={installing} onClick={install} data-autofocus>
+            {t("Update now")}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        {t("You have version {0}. The update downloads, installs on its own, and Inq Studio starts again.", update.currentVersion)}
+      </p>
+      {unsaved > 0 && (
+        <p className="update-warning">
+          <TriangleAlert size={15} aria-hidden="true" />
+          {t("Save your documents first: changes that are not saved are lost when Inq Studio restarts.")}
+        </p>
+      )}
+      {notes.length > 0 && (
+        <div className="update-notes manual-text">
+          <MarkdownBlocks blocks={notes} />
+        </div>
+      )}
+      <Checkbox checked={quiet} onChange={setQuiet} disabled={installing} label={t("Don’t ask at start")} />
+      {installing && <ProgressBar value={progress ?? 0} />}
+      {error && <p className="update-warning">{error}</p>}
     </Modal>
   );
 }

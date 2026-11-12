@@ -216,7 +216,18 @@ export const de: Record<string, string> = {
   "Inq Studio is up to date": "Inq Studio ist aktuell",
   "Installing the update…": "Update wird installiert…",
   "The update check did not work": "Die Update-Prüfung hat nicht funktioniert",
-  "Checks for a new version once a day": "Prüft einmal täglich auf eine neue Version",
+  "Checks for a new version every time it starts": "Prüft bei jedem Start auf eine neue Version",
+  "Ask about updates at start": "Beim Start nach Updates fragen",
+  "When a newer version is out, Inq Studio asks at start whether to install it. Switched off, it only shows a short notice.":
+    "Gibt es eine neuere Version, fragt Inq Studio beim Start, ob sie installiert werden soll. Ausgeschaltet erscheint nur ein kurzer Hinweis.",
+  "Don’t ask at start": "Beim Start nicht mehr fragen",
+  "Skip this version": "Diese Version überspringen",
+  "Later": "Später",
+  "Update now": "Jetzt aktualisieren",
+  "You have version {0}. The update downloads, installs on its own, and Inq Studio starts again.":
+    "Sie haben Version {0}. Das Update wird heruntergeladen, installiert sich selbst, und Inq Studio startet neu.",
+  "Save your documents first: changes that are not saved are lost when Inq Studio restarts.":
+    "Speichern Sie zuerst Ihre Dokumente: Nicht gespeicherte Änderungen gehen verloren, wenn Inq Studio neu startet.",
   "It installs on its own and Inq Studio starts again. Save your documents first.": "Es installiert sich selbst, danach startet Inq Studio neu. Speichern Sie vorher Ihre Dokumente.",
   "New versions come from the project's releases on GitHub, signed so only real ones install.": "Neue Versionen kommen aus den Releases des Projekts auf GitHub und sind signiert, sodass nur echte installiert werden.",
   "Install and restart": "Installieren und neu starten",

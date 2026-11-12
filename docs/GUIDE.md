@@ -13,8 +13,10 @@ yet: if SmartScreen warns, choose *More info › Run anyway*.
 After installing, a PDF opens in Inq Studio with *Open with* in Explorer; make it the default there if you
 like.
 
-Inq Studio looks for a new version once a day and tells you when there is one. *Settings › Updates* checks on
-demand and installs. Updates are signed, and the signature is checked before anything is installed.
+Inq Studio looks for a new version every time it starts. When there is one, it asks whether to install it:
+**Update now**, **Later** (it asks again at the next start) or **Skip this version** (it asks again only
+for the version after that). Tick *Don't ask at start* to get a short notice instead of the question; the
+same switch is in Settings. *Settings › Updates* checks on demand and installs. Updates are signed, and the signature is checked before anything is installed.
 
 ## First steps
 
@@ -171,7 +173,7 @@ as a text file. `Ctrl+P` prints.
 
 Language (English, German; applies after a restart), theme, automatic realigning of text, zoom, units, your author name, how files are saved, the timestamp server,
 updates, and where the log file is. Your documents stay on your computer: Inq Studio uploads nothing. The
-only connections it makes are the daily check for a new version and, if you set one, the timestamp server —
+only connections it makes are the check for a new version at start and, if you set one, the timestamp server —
 which receives a hash, never the document.
 
 ## When something goes wrong

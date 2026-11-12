@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { findUpdateQuietly } from "./lib/updates";
+import { findUpdateQuietly, type Update } from "./lib/updates";
 import { BookOpen, ChevronDown, ChevronUp, Route, Search, X } from "lucide-react";
 import { DocTabs, SHAPE_TOOLS, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, type Toast } from "./components/Chrome";
 import { PageMarksDialog, ResizeDialog, SplitDialog, type MarksTab } from "./components/ToolDialogs";
@@ -20,7 +20,7 @@ import { ManualDialog } from "./components/Manual";
 import { Viewer, type Selection, type TextStyle, type ViewerActions } from "./components/Viewer";
 import { Sidebar, type PageAction, type SideTab } from "./components/Sidebar";
 import { Inspector } from "./components/Inspector";
-import { PasswordDialog, SettingsDialog, UnsavedDialog } from "./components/Dialogs";
+import { PasswordDialog, SettingsDialog, UnsavedDialog, UpdateDialog } from "./components/Dialogs";
 import { TooltipLayer } from "./components/ui/Tooltip";
 import { IconButton } from "./components/ui/Button";
 import { TextField } from "./components/ui/Field";
@@ -92,6 +92,8 @@ export default function App() {
   const [recent, setRecent] = useState<RecentFile[]>(loadRecent);
   const [showSettings, setShowSettings] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  /** A newer version found at start, waiting for the user's answer. */
+  const [offered, setOffered] = useState<Update | null>(null);
   /** The tour runs by itself on the first start. */
   const [touring, setTouring] = useState(() => !tourSeen());
   const [password, setPassword] = useState<{ path: string; wrong: boolean } | null>(null);
@@ -257,7 +259,9 @@ export default function App() {
   // Once at start: a newer version, and a crash report from last time.
   useEffect(() => {
     findUpdateQuietly().then((update) => {
-      if (update) toast("info", t("Inq Studio {0} is available", update.version), t("Install it from Settings › Updates."));
+      if (!update) return;
+      if (settingsRef.current.updatePrompt) setOffered(update);
+      else toast("info", t("Inq Studio {0} is available", update.version), t("Install it from Settings › Updates."));
     });
     api
       .logInfo()
@@ -1421,6 +1425,14 @@ export default function App() {
           );
         })()}
       {showManual && <ManualDialog onClose={() => setShowManual(false)} />}
+      {offered && !touring && (
+        <UpdateDialog
+          update={offered}
+          unsaved={docs.filter((d) => d.info.state.dirty).length}
+          onQuiet={() => setSettings({ ...settingsRef.current, updatePrompt: false })}
+          onClose={() => setOffered(null)}
+        />
+      )}
       {touring && !showManual && !showSettings && !password && !unsaved && <Tour onClose={() => setTouring(false)} />}
       {showSettings && <SettingsDialog settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
       {password && (

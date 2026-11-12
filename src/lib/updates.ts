@@ -9,7 +9,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 const LAST_CHECK = "inq.lastUpdateCheck";
-const DAY = 86_400_000;
+const SKIPPED = "inq.skippedUpdate";
 
 export type { Update };
 
@@ -24,18 +24,30 @@ export async function findUpdate(): Promise<Update | null> {
   return update;
 }
 
-/** At start: checks at most once a day, and never complains when offline. */
+/** At every start: never complains when offline, and leaves out a version the user chose to skip. */
 export async function findUpdateQuietly(): Promise<Update | null> {
   try {
-    const last = Number(localStorage.getItem(LAST_CHECK) ?? 0);
-    if (Date.now() - last < DAY) return null;
-  } catch {
-    // Storage unavailable: check anyway.
-  }
-  try {
-    return await findUpdate();
+    const update = await findUpdate();
+    return update && update.version !== skippedVersion() ? update : null;
   } catch {
     return null;
+  }
+}
+
+function skippedVersion(): string | null {
+  try {
+    return localStorage.getItem(SKIPPED);
+  } catch {
+    return null;
+  }
+}
+
+/** The start-up question is not asked again for this version. Settings › Updates still offers it. */
+export function skipVersion(version: string) {
+  try {
+    localStorage.setItem(SKIPPED, version);
+  } catch {
+    // Asked again next time.
   }
 }
 
