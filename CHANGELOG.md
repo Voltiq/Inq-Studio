@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 — 2026-11-12
+
+### Added
+- **Spanish and French**: the whole interface, the manual ([Español](docs/GUIA.md),
+  [Français](docs/MANUEL.md)) and the installer. Inq Studio follows the language of Windows, or the one
+  chosen under *Settings › Language*.
+
 ## 1.3.1 — 2026-11-12
 
 ### Fixed

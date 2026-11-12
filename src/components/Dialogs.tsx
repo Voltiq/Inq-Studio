@@ -64,6 +64,8 @@ export function SettingsDialog({
             { value: "system", label: t("Match Windows") },
             { value: "en", label: "English" },
             { value: "de", label: "Deutsch" },
+            { value: "es", label: "Español" },
+            { value: "fr", label: "Français" },
           ]}
           helper={t("Applies when Inq Studio is started again.")}
         />

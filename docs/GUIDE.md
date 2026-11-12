@@ -1,8 +1,8 @@
 # Inq Studio — manual
 
 Inq Studio is a PDF viewer and editor for Windows. This manual goes through what it does, in the order most
-people need it. The same text opens inside the app with `F1`. *Eine deutsche Fassung steht in
-[ANLEITUNG.md](ANLEITUNG.md).*
+people need it. The same text opens inside the app with `F1`. *Also in [Deutsch](ANLEITUNG.md), [Español](GUIA.md)
+and [Français](MANUEL.md).*
 
 ## Installing and updating
 
@@ -171,7 +171,7 @@ as a text file. `Ctrl+P` prints.
 
 ## Settings
 
-Language (English, German; applies after a restart), theme, automatic realigning of text, zoom, units, your author name, how files are saved, the timestamp server,
+Language (English, German, Spanish, French; applies after a restart), theme, automatic realigning of text, zoom, units, your author name, how files are saved, the timestamp server,
 updates, and where the log file is. Your documents stay on your computer: Inq Studio uploads nothing. The
 only connections it makes are the check for a new version at start and, if you set one, the timestamp server —
 which receives a hash, never the document.

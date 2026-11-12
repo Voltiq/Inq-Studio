@@ -21,7 +21,7 @@ export interface Settings {
   /** Ask at start whether to install a newer version; otherwise only a short notice appears. */
   updatePrompt: boolean;
   /** Language of the interface; "system" follows Windows. */
-  language: "system" | "en" | "de";
+  language: "system" | "en" | "de" | "es" | "fr";
   /** RFC 3161 timestamp server for signatures; empty for none. */
   timestampUrl: string;
 }

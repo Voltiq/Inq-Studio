@@ -10,8 +10,11 @@
  */
 
 import { de } from "./de";
+import { es } from "./es";
+import { fr } from "./fr";
 
-export type Language = "en" | "de";
+export type Language = "en" | "de" | "es" | "fr";
+const LANGUAGES: Language[] = ["en", "de", "es", "fr"];
 
 function detect(): Language {
   let preference = "system";
@@ -20,13 +23,13 @@ function detect(): Language {
   } catch {
     // No settings yet: follow the system.
   }
-  if (preference === "en" || preference === "de") return preference;
-  const system = typeof navigator === "undefined" ? "en" : navigator.language;
-  return system.toLowerCase().startsWith("de") ? "de" : "en";
+  if (LANGUAGES.includes(preference as Language)) return preference as Language;
+  const system = (typeof navigator === "undefined" ? "en" : navigator.language).slice(0, 2).toLowerCase();
+  return LANGUAGES.includes(system as Language) ? (system as Language) : "en";
 }
 
 let language: Language = detect();
-const tables: Record<Language, Record<string, string>> = { en: {}, de };
+const tables: Record<Language, Record<string, string>> = { en: {}, de, es, fr };
 
 if (typeof document !== "undefined") document.documentElement.lang = language;
 

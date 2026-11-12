@@ -6,10 +6,14 @@ import { currentLanguage, t } from "../lib/i18n";
 import { cx } from "../lib/utils";
 import english from "../../docs/GUIDE.md?raw";
 import german from "../../docs/ANLEITUNG.md?raw";
+import spanish from "../../docs/GUIA.md?raw";
+import french from "../../docs/MANUEL.md?raw";
+
+const MANUALS = { en: english, de: german, es: spanish, fr: french };
 
 /*
  * The manual inside the app. It shows the same file that is in the
- * repository (docs/GUIDE.md, docs/ANLEITUNG.md), so the two cannot drift
+ * repository (docs/GUIDE.md and its translations), so the two cannot drift
  * apart. Only the Markdown those files use is understood.
  */
 
@@ -153,7 +157,7 @@ export function MarkdownBlocks({ blocks }: { blocks: Block[] }) {
 
 export function ManualDialog({ onClose }: { onClose: () => void }) {
   // The pointer to the other language's file means nothing inside the app.
-  const blocks = useMemo(() => parseManual((currentLanguage() === "de" ? german : english).replace(/\s*\*[^*]*\]\([^)]*\.md\)[^*]*\*/, "")), []);
+  const blocks = useMemo(() => parseManual(MANUALS[currentLanguage()].replace(/\s*\*[^*]*\]\([^)]*\.md\)[^*]*\*/, "")), []);
   const chapters = blocks.filter((b): b is Extract<Block, { kind: "heading" }> => b.kind === "heading" && b.level === 2);
   const [current, setCurrent] = useState(chapters[0]?.id ?? "");
   const body = useRef<HTMLDivElement>(null);

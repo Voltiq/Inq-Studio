@@ -182,7 +182,7 @@ oder den Text als Textdatei. `Strg+P` druckt.
 
 ## Einstellungen
 
-Sprache (Englisch, Deutsch; gilt nach einem Neustart), Design, automatisches Ausrichten von Text, Zoom, Einheiten, Ihr Verfassername, die Art
+Sprache (Englisch, Deutsch, Spanisch, Französisch; gilt nach einem Neustart), Design, automatisches Ausrichten von Text, Zoom, Einheiten, Ihr Verfassername, die Art
 des Speicherns, der Zeitstempelserver, Updates und der Ort der Protokolldatei. Ihre Dokumente bleiben auf
 Ihrem Computer: Inq Studio lädt nichts hoch. Die einzigen Verbindungen sind die Prüfung auf eine neue
 Version beim Start und, falls eingetragen, der Zeitstempelserver — der einen Hashwert erhält, nie das Dokument.
