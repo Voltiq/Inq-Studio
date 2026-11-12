@@ -37,7 +37,7 @@ import { t, te } from "../lib/i18n";
 /** Runs a change on the document and reloads it; resolves to whether it worked. */
 export type Run = (fn: () => Promise<DocState | EditResult>, success?: string) => Promise<boolean>;
 
-const stack = { display: "grid", gap: 16 } as const;
+const stack = { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16 } as const;
 const note = { fontSize: 12 } as const;
 
 function when(iso: string): string {
@@ -1210,14 +1210,27 @@ export function SignDialog({
             <SectionMessage appearance="information" title={t("A self-signed digital ID")}>
               {t("It proves that a document has not changed since you signed it. It does not prove who you are: readers show it as unverified until the recipient chooses to trust it. For that, use a certificate from a trust service.")}
             </SectionMessage>
+            <p className="is-muted" style={note}>
+              {t("Only the name and a password are needed; the other details are written into the certificate when you fill them in.")}
+            </p>
             <div className="row">
               <TextField label={t("Name")} value={fresh.name} onChange={(e) => setFresh({ ...fresh, name: e.target.value })} />
-              <TextField label={t("E-mail")} value={fresh.email} onChange={(e) => setFresh({ ...fresh, email: e.target.value })} />
+              <TextField label={t("E-mail (optional)")} type="email" value={fresh.email} onChange={(e) => setFresh({ ...fresh, email: e.target.value })} />
             </div>
             <div className="row">
-              <TextField label={t("Organisation")} value={fresh.organisation} onChange={(e) => setFresh({ ...fresh, organisation: e.target.value })} />
-              <TextField label={t("Country (2 letters)")} value={fresh.country} mono maxLength={2} onChange={(e) => setFresh({ ...fresh, country: e.target.value })} />
-              <TextField label={t("Valid (years)")} value={fresh.years} mono onChange={(e) => setFresh({ ...fresh, years: e.target.value.replace(/\D/g, "") })} />
+              <TextField label={t("Organisation (optional)")} value={fresh.organisation} onChange={(e) => setFresh({ ...fresh, organisation: e.target.value })} />
+              <TextField
+                label={t("Country (optional)")}
+                placeholder={t("Two letters, e.g. DE")}
+                value={fresh.country}
+                mono
+                maxLength={2}
+                onChange={(e) => setFresh({ ...fresh, country: e.target.value.replace(/[^a-z]/gi, "").toUpperCase() })}
+              />
+            </div>
+            <div className="row">
+              <TextField label={t("Valid (years)")} placeholder="5" value={fresh.years} mono onChange={(e) => setFresh({ ...fresh, years: e.target.value.replace(/\D/g, "") })} />
+              <span style={{ flex: 1 }} aria-hidden="true" />
             </div>
             <div className="row">
               <TextField label={t("Password for the file")} type="password" autoComplete="new-password" value={fresh.password} onChange={(e) => setFresh({ ...fresh, password: e.target.value })} />

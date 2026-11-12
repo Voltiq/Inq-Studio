@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1 — 2026-11-12
+
+### Fixed
+- **Creating a digital ID**: the fields of *Sign › Create one* ran past the edge of the dialog. They fit
+  now, in the other document-tools dialogs too.
+
+### Changed
+- The *Create one* form says which details are optional (e-mail, organisation, country) and that only the
+  name and a password are needed. The country takes two letters and is written in capitals.
+
 ## 1.4.0 — 2026-11-12
 
 ### Added
