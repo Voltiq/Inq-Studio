@@ -132,6 +132,10 @@ queda como está.
 El reconocimiento se hace en su equipo con los idiomas de OCR instalados en Windows. Son paquetes de idioma
 de Windows y no tienen nada que ver con el idioma de la interfaz de Inq Studio.
 
+- **Reconocer también el texto de las imágenes** lee además las palabras dentro de las imágenes en las
+  páginas que ya tienen texto: capturas de pantalla, fotos, sellos escaneados. Solo se añaden las palabras
+  de las imágenes, no otra vez el texto de la página. Se pueden buscar, copiar y reescribir como el texto de
+  un escaneo.
 - **Detectar automáticamente** (se ofrece cuando hay más de un idioma instalado) lee la primera página con
   texto en cada idioma instalado y se queda con el que encaja.
 - **Añadir un idioma a Windows**: elija un idioma y pulse *Instalar…*. Windows descarga el paquete y pide

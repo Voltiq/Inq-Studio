@@ -21,6 +21,7 @@ import {
   type OrderItem,
   type PdfaReport,
   type ProtectRequest,
+  type Quad,
   type Rect,
   type SigInfo,
   type Signatures,
@@ -30,6 +31,7 @@ import {
 } from "../lib/api";
 import type { PDFDocumentProxy } from "../lib/pdf";
 import { grayPixels, renderPage } from "../lib/raster";
+import { boxOf, wordsInPictures } from "../lib/ocrPictures";
 import { bytes, plural } from "../lib/format";
 import { cx } from "../lib/utils";
 import { t, te } from "../lib/i18n";
@@ -441,6 +443,8 @@ export function OcrDialog({
   const [more, setMore] = useState("de-DE");
   const [installing, setInstalling] = useState(false);
   const [skip, setSkip] = useState(true);
+  /** Also read the text inside images on pages that already have text. */
+  const [pictures, setPictures] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; words: number } | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
   const [cancel] = useState({ now: false });
@@ -472,11 +476,17 @@ export function OcrDialog({
       for (let i = 0; i < list.length; i++) {
         if (cancel.now) return;
         setProgress({ done: i, total: list.length, words });
+        // A page with text is skipped, or, with pictures on, read for the words inside its images only.
+        let only: { images: Quad[]; text: Quad[] } | null = null;
         if (skip) {
           const text = await api.pageText(docId, list[i]);
           if (text.lines.length) {
-            skipped++;
-            continue;
+            const images = pictures ? await api.images(docId, list[i]) : [];
+            if (!images.length) {
+              skipped++;
+              continue;
+            }
+            only = { images: images.map((im) => im.quad), text: text.lines.map((l) => l.quad) };
           }
         }
         // 300 ppi reads small print reliably; very large pages are scaled to what Windows accepts.
@@ -490,16 +500,26 @@ export function OcrDialog({
           use = found.language;
           setDetected(setup.languages.find((l) => l.tag === use)?.name ?? use);
         }
-        if (found.lines.length) {
-          // The canvas is the viewport at this scale, rounded down to whole pixels.
-          const vp = page.getViewport({ scale });
-          out.push({ page: list[i], transform: vp.transform, lines: found.lines });
-          words += found.lines.reduce((n, l) => n + l.words.length, 0);
+        // The canvas is the viewport at this scale, rounded down to whole pixels.
+        const vp = page.getViewport({ scale });
+        const toPixels = (x: number, y: number) => vp.convertToViewportPoint(x, y) as number[];
+        const kept = only ? wordsInPictures(found.lines, only.images.map((q) => boxOf(q, toPixels)), only.text.map((q) => boxOf(q, toPixels))) : found.lines;
+        if (kept.length) {
+          out.push({ page: list[i], transform: vp.transform, lines: kept });
+          words += kept.reduce((n, l) => n + l.words.length, 0);
+        } else if (only) {
+          skipped++;
         }
       }
       setProgress({ done: list.length, total: list.length, words });
       if (!out.length) {
-        setError(skipped === list.length ? t("Every page in this range already has text. Turn off “Skip pages that already have text” to recognise them again.") : t("No text was recognised on these pages."));
+        setError(
+          skipped === list.length
+            ? pictures
+              ? t("Every page in this range already has text, and no text was found in its pictures.")
+              : t("Every page in this range already has text. Turn off “Skip pages that already have text” to recognise them again.")
+            : t("No text was recognised on these pages."),
+        );
         setProgress(null);
         return;
       }
@@ -542,6 +562,14 @@ export function OcrDialog({
             <Select label={t("Language of the text")} value={lang} onChange={setLang} options={[...(setup.languages.length > 1 ? [{ value: "auto", label: t("Detect automatically") }] : []), ...setup.languages.map((l) => ({ value: l.tag, label: l.name }))]} helper={detected ? t("Detected: {0}", detected) : t("Languages come from the OCR packs installed in Windows; recognition runs on this computer.")} />
             <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
             <Toggle label={t("Skip pages that already have text")} checked={skip} onChange={setSkip} />
+            {skip && (
+              <Toggle
+                label={t("Recognise text in pictures too")}
+                description={t("On pages that already have text, the words inside images — screenshots, photos, scanned stamps — are recognised as well. Like text on a scan, they can then be searched, copied and rewritten with the edit tool.")}
+                checked={pictures}
+                onChange={setPictures}
+              />
+            )}
           </>
         )}
         {setup && missing.length > 0 && (

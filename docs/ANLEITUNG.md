@@ -128,6 +128,9 @@ selbst entfernt. Nach dem Speichern lassen sie sich nicht zurückholen.
 Die Erkennung läuft auf Ihrem Computer mit den in Windows installierten OCR-Sprachen. Das sind
 Windows-Sprachpakete; mit der Sprache der Oberfläche von Inq Studio haben sie nichts zu tun.
 
+- **Auch Text in Bildern erkennen** liest auf Seiten, die schon Text haben, auch die Wörter in Bildern:
+  Bildschirmfotos, Fotos, eingescannte Stempel. Hinzu kommen nur die Wörter in den Bildern, nicht noch
+  einmal der Text der Seite. Sie lassen sich durchsuchen, kopieren und neu schreiben wie Text auf einem Scan.
 - **Automatisch erkennen** (angeboten, wenn mehr als eine Sprache installiert ist) liest die erste Seite
   mit Text in jeder installierten Sprache und behält die passende.
 - **Sprache zu Windows hinzufügen**: eine Sprache wählen und *Installieren…* drücken. Windows lädt das

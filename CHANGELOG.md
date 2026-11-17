@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 — 2026-11-17
+
+### Added
+- **Text in pictures**: *Recognise text (OCR)* has a new option, *Recognise text in pictures too*. On pages
+  that already have text, it reads the words inside images (screenshots, photos, scanned stamps) and adds
+  only those, not the page's own text again. Like text on a scan, they can then be searched, copied and
+  rewritten with the edit tool.
+
 ## 1.5.0 — 2026-11-12
 
 ### Added
