@@ -137,8 +137,9 @@ reste telle quelle.
 La reconnaissance s’effectue sur votre ordinateur avec les langues OCR installées dans Windows. Ce sont des
 modules linguistiques de Windows, sans rapport avec la langue de l’interface d’Inq Studio.
 
-- **Reconnaître aussi le texte des images** lit aussi les mots à l’intérieur des images sur les pages qui
-  contiennent déjà du texte : captures d’écran, photos, tampons numérisés. Seuls les mots des images sont
+- **Reconnaître aussi le texte des images** lit aussi le lettrage des images et des dessins sur les
+  pages qui contiennent déjà du texte : captures d’écran, photos, illustrations (où le lettrage est souvent
+  dessiné sous forme de tracés), tampons numérisés. Seuls les mots qui ne sont pas encore du texte sont
   ajoutés, pas une seconde fois le texte de la page. Ils peuvent être recherchés, copiés et réécrits comme
   le texte d’une numérisation.
 - **Détecter automatiquement** (proposé lorsque plusieurs langues sont installées) lit la première page

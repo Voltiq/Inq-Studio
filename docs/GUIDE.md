@@ -119,9 +119,9 @@ invisibly over the scan, so it can be searched, selected and copied; the picture
 Recognition runs on your computer with the OCR languages installed in Windows. These are Windows language
 packs and have nothing to do with the language of Inq Studio's interface.
 
-- **Recognise text in pictures too** also reads the words inside images on pages that already have text:
-  screenshots, photos, scanned stamps. Only the words inside the pictures are added, not the page's own
-  text again. They can be searched, copied and rewritten like text on a scan.
+- **Recognise text in pictures too** also reads lettering in images and drawings on pages that already have
+  text: screenshots, photos, illustrations (where lettering is often drawn as shapes), scanned stamps. Only
+  words that are not text yet are added, not the page's own text again. They can be searched, copied and rewritten like text on a scan.
 - **Detect automatically** (offered when more than one language is installed) reads the first page with
   text in each installed language and keeps the one that fits.
 - **Add a language to Windows**: pick a language and press *Install…*. Windows downloads the pack and asks

@@ -694,3 +694,50 @@ fn rewriting_recognised_text_changes_what_the_scan_shows() {
     let patch = after.paths.last().expect("a cover is drawn");
     assert!(patch.bbox[0] < origin[0] && patch.bbox[2] > origin[0] + 150.0, "{:?}", patch.bbox);
 }
+
+/// What a file's pages hold, for working out why OCR finds no pictures:
+/// `INQ_TEST_PDF=path cargo test pictures_of_a_file -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn pictures_of_a_file() {
+    let Ok(path) = std::env::var("INQ_TEST_PDF") else { return };
+    let doc = Document::load(&path).unwrap();
+    for (n, pid) in pages::page_ids(&doc).into_iter().enumerate() {
+        let scan = scan_page(&doc, pid).unwrap();
+        let visible = scan.lines.iter().filter(|l| !l.invisible).count();
+        println!("page {}: {} lines ({} visible), {} paths", n + 1, scan.lines.len(), visible, scan.paths.len());
+        for l in &scan.lines {
+            let xs = l.quad.iter().map(|p| p[0]);
+            let ys = l.quad.iter().map(|p| p[1]);
+            let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
+            let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
+            println!("  line [{:.0} {:.0} {:.0} {:.0}] {:.1}pt {} {:?}", x0, y0, x1, y1, l.em, l.font_name, l.text.chars().take(40).collect::<String>());
+        }
+        let mut big: Vec<[f32; 4]> = scan.paths.iter().map(|p| p.bbox).filter(|b| b[2] - b[0] > 30.0 && b[3] - b[1] > 20.0).collect();
+        let area = |b: &[f32; 4]| (b[2] - b[0]) * (b[3] - b[1]);
+        big.sort_by(|a, b| area(b).partial_cmp(&area(a)).unwrap());
+        for b in big.iter().take(15) {
+            println!("  shape [{:.0} {:.0} {:.0} {:.0}]", b[0], b[1], b[2], b[3]);
+        }
+        let small = scan.paths.iter().filter(|p| p.bbox[2] - p.bbox[0] < 15.0 && p.bbox[3] - p.bbox[1] < 15.0).count();
+        println!("  {} small shapes (glyph-sized)", small);
+        for im in images::list(&doc, pid).unwrap() {
+            println!("  image {}: {}x{} px at {:?}, {} {}, alpha {}", im.index, im.width, im.height, im.bbox.map(|v| v.round()), im.filter, im.color_space, im.has_alpha);
+        }
+        // XObjects the page names, and their kinds.
+        {
+            let res = crate::interp::page_resources(&doc, pid);
+            let xo = match res.get(b"XObject") {
+                Ok(Object::Reference(r)) => doc.get_dictionary(*r).ok(),
+                Ok(Object::Dictionary(d)) => Some(d),
+                _ => None,
+            };
+            if let Some(xo) = xo {
+                for (name, r) in xo.iter() {
+                    let sub = r.as_reference().ok().and_then(|id| doc.get_object(id).ok()).and_then(|o| o.as_stream().ok()).and_then(|s| s.dict.get(b"Subtype").ok().and_then(|x| x.as_name().ok()).map(|x| String::from_utf8_lossy(x).to_string()));
+                    println!("  xobject /{}: {:?}", String::from_utf8_lossy(name), sub);
+                }
+            }
+        }
+    }
+}

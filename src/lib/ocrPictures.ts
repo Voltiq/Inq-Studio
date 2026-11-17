@@ -1,16 +1,14 @@
 /*
  * Text in pictures. On a page that already has text, recognition reads the
- * whole page, but only the words inside an image are new: everything else is
- * text the page already holds. These helpers keep just those words.
- * Boxes are in the pixels of the rendered page: [left, top, right, bottom].
+ * whole page, but only words that are not already text are new: lettering
+ * in photos and screenshots, and lettering drawn as shapes in illustrations
+ * (common in brochures, where it is often outlined). These helpers keep just
+ * those words. Boxes are in the pixels of the rendered page: [left, top, right, bottom].
  */
 
 import type { OcrLine, Quad } from "./api";
 
 export type Box = [number, number, number, number];
-
-/** Pictures smaller than this (in rendered pixels) hold no readable text. */
-const MIN_SIDE = 24;
 
 /** The box around a quad, through a function that turns PDF points into rendered pixels. */
 export function boxOf(quad: Quad, toPixels: (x: number, y: number) => number[]): Box {
@@ -27,24 +25,20 @@ function overlap(a: Box, b: Box): number {
 }
 
 /**
- * The recognised words that lie inside a picture and not on text the page
- * already has (its own text, or text recognised before). Lines left without
- * words are dropped.
+ * The recognised words that are not on text the page already has (its own
+ * text, or text recognised before). Specks that are no letter or digit, which
+ * the shapes of a drawing can produce, are left out, and so are lines left
+ * without words.
  */
-export function wordsInPictures(lines: OcrLine[], pictures: Box[], taken: Box[]): OcrLine[] {
-  const big = pictures.filter((p) => p[2] - p[0] >= MIN_SIDE && p[3] - p[1] >= MIN_SIDE);
-  if (!big.length) return [];
+export function wordsOffText(lines: OcrLine[], taken: Box[]): OcrLine[] {
   return lines
     .map((line) => ({
       ...line,
       words: line.words.filter((w) => {
+        if (!/[\p{L}\p{N}]/u.test(w.text)) return false;
         const box: Box = [w.x, w.y, w.x + w.w, w.y + w.h];
-        const cx = w.x + w.w / 2;
-        const cy = w.y + w.h / 2;
-        const inside = big.some((p) => cx >= p[0] && cx <= p[2] && cy >= p[1] && cy <= p[3]);
         const area = Math.max(1, w.w * w.h);
-        const covered = taken.some((t) => overlap(box, t) > 0.4 * area);
-        return inside && !covered;
+        return !taken.some((t) => overlap(box, t) > 0.4 * area);
       }),
     }))
     .filter((line) => line.words.length > 0);

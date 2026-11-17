@@ -97,16 +97,16 @@ describe("manual", () => {
 });
 
 describe("text in pictures", () => {
-  it("keeps only the words inside a picture and off the page's own text", async () => {
-    const { wordsInPictures } = await import("./ocrPictures");
+  it("keeps the words that are not text yet, and no specks", async () => {
+    const { wordsOffText } = await import("./ocrPictures");
     const word = (text: string, x: number, y: number) => ({ text, x, y, w: 40, h: 12 });
     const lines = [
       { words: [word("Body", 10, 10), word("text", 60, 10)] },
-      { words: [word("Sign", 210, 210), word("Exit", 260, 210)] },
-      { words: [word("Already", 210, 300)] },
+      { words: [word("Upload", 210, 210), word("•", 260, 210), word("2", 300, 210)] },
     ];
-    const kept = wordsInPictures(lines, [[200, 200, 400, 400], [0, 0, 5, 5]], [[205, 295, 260, 315]]);
-    expect(kept.map((l) => l.words.map((w) => w.text))).toEqual([["Sign", "Exit"]]);
-    expect(wordsInPictures(lines, [[0, 0, 10, 10]], [])).toEqual([]);
+    // The page's own text covers the first line.
+    const kept = wordsOffText(lines, [[5, 8, 110, 24]]);
+    expect(kept.map((l) => l.words.map((w) => w.text))).toEqual([["Upload", "2"]]);
+    expect(wordsOffText(lines, [[0, 0, 1000, 1000]])).toEqual([]);
   });
 });

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.1 — 2026-11-17
+
+### Fixed
+- **Text in drawings**: *Recognise text in pictures too* only looked inside images, so lettering in vector
+  illustrations (often drawn as shapes) was never read. It now keeps every recognised word that is not
+  already text on the page, wherever it is, and leaves out specks that are no letter or digit.
+
 ## 1.6.0 — 2026-11-17
 
 ### Added

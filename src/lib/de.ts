@@ -466,7 +466,8 @@ export const de: Record<string, string> = {
   "Languages come from the OCR packs installed in Windows; recognition runs on this computer.": "Die Sprachen stammen aus den in Windows installierten OCR-Paketen; die Erkennung läuft auf diesem Computer.",
   "Skip pages that already have text": "Seiten mit vorhandenem Text überspringen",
   "Recognise text in pictures too": "Auch Text in Bildern erkennen",
-  "On pages that already have text, the words inside images — screenshots, photos, scanned stamps — are recognised as well. Like text on a scan, they can then be searched, copied and rewritten with the edit tool.": "Auf Seiten, die schon Text haben, werden auch die Wörter in Bildern erkannt — Bildschirmfotos, Fotos, eingescannte Stempel. Wie Text auf einem Scan lassen sie sich dann durchsuchen, kopieren und mit dem Bearbeiten-Werkzeug neu schreiben.",
+  "On pages that already have text, lettering in images and drawings — screenshots, photos, illustrations, scanned stamps — is recognised as well. Like text on a scan, it can then be searched, copied and rewritten with the edit tool.":
+    "Auf Seiten, die schon Text haben, wird auch Schrift in Bildern und Zeichnungen erkannt — Bildschirmfotos, Fotos, Illustrationen, eingescannte Stempel. Wie Text auf einem Scan lässt sie sich dann durchsuchen, kopieren und mit dem Bearbeiten-Werkzeug neu schreiben.",
   "Every page in this range already has text, and no text was found in its pictures.": "Jede Seite in diesem Bereich hat bereits Text, und in ihren Bildern wurde kein Text gefunden.",
   "Recognising": "Erkenne",
   "so far": "bisher",

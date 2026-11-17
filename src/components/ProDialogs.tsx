@@ -31,7 +31,7 @@ import {
 } from "../lib/api";
 import type { PDFDocumentProxy } from "../lib/pdf";
 import { grayPixels, renderPage } from "../lib/raster";
-import { boxOf, wordsInPictures } from "../lib/ocrPictures";
+import { boxOf, wordsOffText } from "../lib/ocrPictures";
 import { bytes, plural } from "../lib/format";
 import { cx } from "../lib/utils";
 import { t, te } from "../lib/i18n";
@@ -476,17 +476,17 @@ export function OcrDialog({
       for (let i = 0; i < list.length; i++) {
         if (cancel.now) return;
         setProgress({ done: i, total: list.length, words });
-        // A page with text is skipped, or, with pictures on, read for the words inside its images only.
-        let only: { images: Quad[]; text: Quad[] } | null = null;
+        // A page with text is skipped, or, with pictures on, read for the words that are not text yet:
+        // lettering in photos and screenshots, and lettering drawn as shapes in illustrations.
+        let taken: Quad[] | null = null;
         if (skip) {
           const text = await api.pageText(docId, list[i]);
           if (text.lines.length) {
-            const images = pictures ? await api.images(docId, list[i]) : [];
-            if (!images.length) {
+            if (!pictures) {
               skipped++;
               continue;
             }
-            only = { images: images.map((im) => im.quad), text: text.lines.map((l) => l.quad) };
+            taken = text.lines.map((l) => l.quad);
           }
         }
         // 300 ppi reads small print reliably; very large pages are scaled to what Windows accepts.
@@ -503,11 +503,11 @@ export function OcrDialog({
         // The canvas is the viewport at this scale, rounded down to whole pixels.
         const vp = page.getViewport({ scale });
         const toPixels = (x: number, y: number) => vp.convertToViewportPoint(x, y) as number[];
-        const kept = only ? wordsInPictures(found.lines, only.images.map((q) => boxOf(q, toPixels)), only.text.map((q) => boxOf(q, toPixels))) : found.lines;
+        const kept = taken ? wordsOffText(found.lines, taken.map((q) => boxOf(q, toPixels))) : found.lines;
         if (kept.length) {
           out.push({ page: list[i], transform: vp.transform, lines: kept });
           words += kept.reduce((n, l) => n + l.words.length, 0);
-        } else if (only) {
+        } else if (taken) {
           skipped++;
         }
       }
@@ -565,7 +565,7 @@ export function OcrDialog({
             {skip && (
               <Toggle
                 label={t("Recognise text in pictures too")}
-                description={t("On pages that already have text, the words inside images — screenshots, photos, scanned stamps — are recognised as well. Like text on a scan, they can then be searched, copied and rewritten with the edit tool.")}
+                description={t("On pages that already have text, lettering in images and drawings — screenshots, photos, illustrations, scanned stamps — is recognised as well. Like text on a scan, it can then be searched, copied and rewritten with the edit tool.")}
                 checked={pictures}
                 onChange={setPictures}
               />
