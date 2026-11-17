@@ -39,6 +39,8 @@ pub struct LineEdit {
     /// paper around the line and of its ink, as the window sees them.
     pub cover: Option<[f32; 3]>,
     pub ink: Option<[f32; 3]>,
+    /// The recognised letters looked bold.
+    pub bold: bool,
     /// Keep the paragraph around the line in shape: a rewritten line is
     /// wrapped again together with the rest of its paragraph, and the lines
     /// below a deleted line move up.
@@ -1560,7 +1562,11 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
             continue;
         }
         let plain = text.chars().all(|c| crate::encoding::win_ansi_byte(c).is_some());
-        let font = if plain { FontChoice::Standard { name: "Helvetica".into() } } else { FontChoice::System { family: "Arial".into(), bold: false, italic: false } };
+        let font = match (plain, edit.bold) {
+            (true, false) => FontChoice::Standard { name: "Helvetica".into() },
+            (true, true) => FontChoice::Standard { name: "Helvetica-Bold".into() },
+            (false, bold) => FontChoice::System { family: "Arial".into(), bold, italic: false },
+        };
         notices.extend(place_text(doc, page_id, &text, &font, em, ink, (origin[0], origin[1]), angle, 0.0, 1.0, false)?);
     }
     notices.insert(0, "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.".to_string());

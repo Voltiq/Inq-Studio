@@ -466,7 +466,8 @@ fn lays_recognised_words_over_the_page() {
     assert!(l.invisible);
     // The line starts where the first word was seen and ends where the second one did.
     assert!((l.origin[0] - 100.0).abs() < 0.5, "{:?}", l.origin);
-    assert!((l.origin[1] - (842.0 - 340.0 / 2.0 + 0.2 * 20.0)).abs() < 0.6, "{:?}", l.origin);
+    // No letter goes below the baseline, so the baseline is the bottom of the box.
+    assert!((l.origin[1] - (842.0 - 340.0 / 2.0)).abs() < 0.6, "{:?}", l.origin);
     assert!((l.origin[0] + l.chars.last().unwrap() - 260.0).abs() < 1.0, "{:?}", l.chars);
     // Text other scripts need comes from an installed font.
     let cjk = ocr::OcrPage { page: 0, transform: page.transform, lines: vec![ocr::OcrLine { words: vec![ocr::OcrWord { text: "Grüße".into(), x: 10.0, y: 10.0, w: 50.0, h: 20.0 }] }] };
@@ -740,4 +741,35 @@ fn pictures_of_a_file() {
             }
         }
     }
+}
+
+#[test]
+fn recognised_text_is_sized_from_its_letters() {
+    // "Upload" spans ascenders to descenders: 0.93 em; "now" only the x-height.
+    let (em, below) = ocr::em_of_box(["Upload"].into_iter(), 93.0);
+    assert!((em - 100.0).abs() < 0.5 && (below - 21.0).abs() < 0.5, "{em} {below}");
+    let (em, below) = ocr::em_of_box(["now"].into_iter(), 52.0);
+    assert!((em - 100.0).abs() < 0.5 && below == 0.0, "{em}");
+    let (em, _) = ocr::em_of_box(["HELLO"].into_iter(), 72.0);
+    assert!((em - 100.0).abs() < 0.5, "{em}");
+}
+
+#[test]
+fn bold_recognised_text_is_rewritten_bold() {
+    let mut doc = doc_with(&[&[]]);
+    let pid = pages::page_id(&doc, 0).unwrap();
+    let page = ocr::OcrPage {
+        page: 0,
+        transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0],
+        lines: vec![ocr::OcrLine { words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
+    };
+    ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap();
+    let scan = scan_page(&doc, pid).unwrap();
+    let id = scan.lines.iter().find(|l| l.invisible).unwrap().id;
+    let edit = LineEdit { text: Some("Upload".into()), cover: Some([0.1, 0.3, 0.9]), ink: Some([1.0, 1.0, 1.0]), bold: true, ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[id], &edit).unwrap();
+    let scan = scan_page(&doc, pid).unwrap();
+    let l = scan.lines.iter().find(|l| !l.invisible && l.text == "Upload").expect("visible text");
+    assert!(l.bold, "set in a bold font: {}", l.font_name);
+    assert_eq!(l.color.map(|c| (c * 100.0).round()), [100.0, 100.0, 100.0]);
 }

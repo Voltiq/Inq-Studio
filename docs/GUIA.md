@@ -86,7 +86,8 @@ ningún lado se compone el carácter que falta en una fuente parecida, y un avis
 Una página escaneada es una imagen; sus palabras son píxeles, no texto. Después de *Reconocer texto* (véase
 más abajo) las palabras se pueden seleccionar, y también reescribir: doble clic en una línea reconocida con
 la herramienta de edición. Como las palabras antiguas forman parte de la imagen, Inq Studio cubre la línea
-con un parche del color del papel y dibuja encima su texto en el color de la tinta. El texto nuevo se compone
+con un parche del color que hay detrás de las letras (el papel, o el botón o la imagen sobre los que están) y
+dibuja encima su texto en el color de las letras antiguas, en negrita si lo eran. El texto nuevo se compone
 en Helvetica o Arial, así que no coincidirá exactamente con el tipo de letra del escaneo. El texto reconocido
 se edita línea por línea.
 

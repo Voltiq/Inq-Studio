@@ -272,6 +272,24 @@ fn layer_font(lines: &[OcrLine], lang: &str) -> FontChoice {
     FontChoice::System { family: family.into(), bold: false, italic: false }
 }
 
+/// The size (em) of text whose letters fill a box `height` high, and how far
+/// the baseline sits above the bottom of the box, from which letters it has.
+/// Proportions of a typical sans-serif: cap height and ascenders 0.72 em,
+/// x-height 0.52 em, descenders 0.21 em.
+pub fn em_of_box<'a>(words: impl Iterator<Item = &'a str>, height: f32) -> (f32, f32) {
+    let text: String = words.collect();
+    let tall = text.chars().any(|c| c.is_uppercase() || c.is_ascii_digit() || "bdfhklt'\"!?/()[]{}|&%#ß".contains(c) || (c.is_alphabetic() && !c.is_ascii()));
+    let deep = text.chars().any(|c| "gjpqy,;()[]{}|".contains(c));
+    let span = match (tall, deep) {
+        (true, true) => 0.93,
+        (true, false) => 0.72,
+        (false, true) => 0.73,
+        (false, false) => 0.52,
+    };
+    let em = height / span;
+    (em, if deep { 0.21 * em } else { 0.0 })
+}
+
 /// Lays the recognised words over the page as invisible text.
 /// Returns the number of words placed and font notices.
 pub fn add_text_layer(doc: &mut Document, page_id: ObjectId, page: &OcrPage, lang: &str) -> Result<(usize, Vec<String>), String> {
@@ -287,9 +305,11 @@ pub fn add_text_layer(doc: &mut Document, page_id: ObjectId, page: &OcrPage, lan
         let top = line.words.iter().map(|w| w.y).fold(f32::MAX, f32::min);
         let bottom = line.words.iter().map(|w| w.y + w.h).fold(f32::MIN, f32::max);
         let height = (bottom - top).max(1.0);
-        // The box of a line runs from its ascenders to its descenders; the baseline sits a little above the bottom.
-        let baseline = bottom - 0.2 * height;
-        let size = height * sy;
+        // How much of the em the box spans depends on the letters: "Upload" reaches from the ascenders to the
+        // descenders, "now" covers only the x-height.
+        let (em, below) = em_of_box(line.words.iter().map(|w| w.text.as_str()), height);
+        let baseline = bottom - below;
+        let size = em * sy;
         for w in &line.words {
             words.push(HiddenWord { text: w.text.clone(), origin: apply(&inv, w.x, baseline), dir, up, size, width: w.w * sx });
         }

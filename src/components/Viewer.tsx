@@ -18,6 +18,7 @@ import {
   type OrderItem,
 } from "../lib/api";
 import { usePageStamps } from "../lib/stamps";
+import { lookOnCanvas, registerPage } from "../lib/pageColours";
 import { pdfjs, type PDFDocumentProxy, type PageViewport, type SearchHit } from "../lib/pdf";
 import { AnnotsLayer, EXTRA_TOOLS, FieldsLayer, ImagesLayer, ShapesLayer, type ExtraActions, type ToolOptions } from "./PageExtras";
 import type { FieldInfo, ImageInfo, Rect } from "../lib/api";
@@ -375,33 +376,6 @@ interface Geometry {
   bbox: [number, number, number, number];
 }
 
-/**
- * The colour of the paper and of the ink inside a line's box on the rendered
- * page: the middle of its lighter pixels, and the mean of its darkest tenth.
- */
-function paperAndInk(canvas: HTMLCanvasElement, vp: PageViewport, q: Quad): { cover?: [number, number, number]; ink?: [number, number, number] } {
-  const k = canvas.width / vp.width;
-  const pts = q.map((p) => vp.convertToViewportPoint(p[0], p[1]) as number[]);
-  const x0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[0])) * k));
-  const y0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[1])) * k));
-  const x1 = Math.min(canvas.width, Math.ceil(Math.max(...pts.map((p) => p[0])) * k));
-  const y1 = Math.min(canvas.height, Math.ceil(Math.max(...pts.map((p) => p[1])) * k));
-  const ctx = canvas.getContext("2d");
-  if (!ctx || x1 - x0 < 2 || y1 - y0 < 2) return {};
-  const { data } = ctx.getImageData(x0, y0, x1 - x0, y1 - y0);
-  const step = Math.max(1, Math.floor(data.length / 4 / 20000));
-  const px: [number, number, number, number][] = [];
-  for (let i = 0; i < data.length; i += 4 * step) px.push([data[i], data[i + 1], data[i + 2], data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114]);
-  if (px.length < 4) return {};
-  px.sort((a, b) => a[3] - b[3]);
-  const mean = (from: number, to: number): [number, number, number] => {
-    const part = px.slice(from, Math.max(from + 1, to));
-    return [0, 1, 2].map((c) => part.reduce((s, p) => s + p[c], 0) / part.length / 255) as [number, number, number];
-  };
-  const n = px.length;
-  return { cover: mean(Math.floor(n * 0.6), Math.floor(n * 0.9)), ink: mean(0, Math.ceil(n * 0.08)) };
-}
-
 function quadGeometry(vp: PageViewport, q: Quad): Geometry {
   const v = q.map((p) => vp.convertToViewportPoint(p[0], p[1]) as [number, number]);
   const [bl, br, , tl] = v;
@@ -494,9 +468,21 @@ function PageView({
   toolOptions: ToolOptions;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const vpRef = useRef<PageViewport | null>(null);
+  // Rewriting recognised text asks this page what a line looks like on it.
+  useEffect(
+    () =>
+      registerPage(docId, index, (q, em) => {
+        const c = canvasRef.current;
+        const v = vpRef.current;
+        return c && v ? lookOnCanvas(c, v, q, em) : {};
+      }),
+    [docId, index],
+  );
   const textRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState<PageViewport | null>(null);
+  vpRef.current = vp;
   const [rendered, setRendered] = useState(false);
   const [text, setText] = useState<PageText | null>(null);
   const [annots, setAnnots] = useState<AnnotInfo[]>([]);
@@ -1062,9 +1048,8 @@ function PageView({
                   onSelect({ ...sel, editing: null });
                   return;
                 }
-                // On a scan the old words are pixels: the engine covers them in the colour of the paper.
-                const colours = editingLine.invisible && vp && canvasRef.current ? paperAndInk(canvasRef.current, vp, editingLine.quad) : {};
-                const ok = await actions.editLines(index, [editingLine.id], sel.revision, { text: value, ...colours });
+                // The colours of a scan or picture are measured where all rewrites go through (App).
+                const ok = await actions.editLines(index, [editingLine.id], sel.revision, { text: value });
                 if (!ok) onSelect({ ...sel, editing: null });
               }}
             />

@@ -77,9 +77,10 @@ for every font what an edit can do.
 
 A scanned page is a picture; its words are pixels, not text. After *Recognise text* (see below) the words
 can be selected, and also rewritten: double-click a recognised line with the edit tool. Because the old
-words are part of the picture, Inq Studio covers the line with a patch in the colour of the paper and draws
-your text over it in the colour of the ink. The new text is set in Helvetica or Arial, so it will not match
-the scan's typeface exactly. Recognised text is edited one line at a time.
+words are part of the picture, Inq Studio covers the line with a patch in the colour behind the letters
+(the paper, or the button or picture they sit on) and draws your text over it in the colour of the old
+letters, bold if they were bold. The new text is set in Helvetica or Arial, so it will not match the scan's
+typeface exactly. Recognised text is edited one line at a time.
 
 ## Images
 

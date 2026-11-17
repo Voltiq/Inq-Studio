@@ -5,6 +5,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { findUpdateQuietly, type Update } from "./lib/updates";
+import { lookOfLine } from "./lib/pageColours";
 import { BookOpen, ChevronDown, ChevronUp, Route, Search, X } from "lucide-react";
 import { DocTabs, SHAPE_TOOLS, TOOL_HINTS, TOOL_KEYS, Toasts, Toolbar, TopBar, type Toast } from "./components/Chrome";
 import { PageMarksDialog, ResizeDialog, SplitDialog, type MarksTab } from "./components/ToolDialogs";
@@ -81,6 +82,8 @@ export default function App() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [tool, setTool] = useState<Tool>("select");
   const [selection, setSelection] = useState<Selection>(null);
+  const selectionRef = useRef<Selection>(null);
+  selectionRef.current = selection;
   const [sideTab, setSideTab] = useState<SideTab>("pages");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -528,6 +531,9 @@ export default function App() {
     () => ({
       editLines: async (page, lines, revision, edit) => {
         if (id == null) return false;
+        // Rewriting recognised text: the old words are pixels, so measure the background, ink and weight they have on screen.
+        const first = selectionRef.current?.kind === "lines" ? selectionRef.current.lines.find((l) => l.id === lines[0]) : undefined;
+        if (edit.text != null && !edit.cover && first?.invisible) edit = { ...edit, ...lookOfLine(id, page, first.quad, first.em) };
         // Rewriting or deleting a line keeps its paragraph in shape, when that is switched on.
         const whole = settingsRef.current.reflow && (edit.text != null || edit.delete) ? { ...edit, reflow: true } : edit;
         const ok = await run(id, () => api.editLines(id, page, revision, lines, whole));

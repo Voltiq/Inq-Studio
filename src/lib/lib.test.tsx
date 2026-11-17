@@ -108,5 +108,42 @@ describe("text in pictures", () => {
     const kept = wordsOffText(lines, [[5, 8, 110, 24]]);
     expect(kept.map((l) => l.words.map((w) => w.text))).toEqual([["Upload", "2"]]);
     expect(wordsOffText(lines, [[0, 0, 1000, 1000]])).toEqual([]);
+    // A chevron after "Upload" read as "v" goes; "a" between words stays.
+    const button = [{ words: [word("Upload", 100, 50), { text: "v", x: 175, y: 52, w: 10, h: 10 }] }];
+    expect(wordsOffText(button, []).map((l) => l.words.map((w) => w.text))).toEqual([["Upload"]]);
+    const sentence = [{ words: [{ text: "Take", x: 0, y: 0, w: 40, h: 12 }, { text: "a", x: 44, y: 0, w: 8, h: 12 }, { text: "tour", x: 56, y: 0, w: 36, h: 12 }] }];
+    expect(wordsOffText(sentence, []).map((l) => l.words.map((w) => w.text))).toEqual([["Take", "a", "tour"]]);
+  });
+});
+
+describe("look of a line", () => {
+  it("finds white bold letters on a blue button", async () => {
+    const { lookOfPixels } = await import("./pageColours");
+    const w = 120;
+    const h = 30;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        // Blue, with white upright strokes 5 px wide every 15 px (bold for a 30 px em).
+        const stroke = y > 4 && y < 26 && x % 15 < 5;
+        const i = (y * w + x) * 4;
+        data.set(stroke ? [255, 255, 255, 255] : [30, 80, 230, 255], i);
+      }
+    const look = lookOfPixels(data, w, h, 30);
+    expect(look.cover?.map((c) => Math.round(c * 255))).toEqual([30, 80, 230]);
+    expect(look.ink?.map((c) => Math.round(c * 255))).toEqual([255, 255, 255]);
+    expect(look.bold).toBe(true);
+    // The same strokes 2 px wide are regular weight.
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x % 15 >= 2 && x % 15 < 5) data.set([30, 80, 230, 255], (y * w + x) * 4);
+    expect(lookOfPixels(data, w, h, 30).bold).toBe(false);
+  });
+
+  it("finds dark ink on paper", async () => {
+    const { lookOfPixels } = await import("./pageColours");
+    const data = new Uint8ClampedArray(40 * 10 * 4);
+    for (let i = 0; i < 400; i++) data.set(i % 7 === 0 ? [20, 20, 20, 255] : [250, 248, 240, 255], i * 4);
+    const look = lookOfPixels(data, 40, 10, 10);
+    expect(look.cover?.map((c) => Math.round(c * 255))).toEqual([250, 248, 240]);
+    expect(look.ink?.map((c) => Math.round(c * 255))).toEqual([20, 20, 20]);
   });
 });

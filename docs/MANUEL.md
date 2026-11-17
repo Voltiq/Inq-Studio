@@ -91,7 +91,9 @@ faire.
 Une page numérisée est une image ; ses mots sont des pixels, pas du texte. Après *Reconnaître le texte*
 (voir plus bas), les mots peuvent être sélectionnés, et aussi réécrits : double-cliquez sur une ligne
 reconnue avec l’outil de modification. Comme les anciens mots font partie de l’image, Inq Studio recouvre la
-ligne d’un cache de la couleur du papier et dessine votre texte par-dessus dans la couleur de l’encre. Le
+ligne d’un cache de la couleur qui se trouve derrière les lettres (le papier, ou le bouton ou l’image sur
+lesquels elles sont posées) et dessine votre texte par-dessus dans la couleur des anciennes lettres, en gras
+si elles l’étaient. Le
 nouveau texte est composé en Helvetica ou en Arial ; il ne correspondra donc pas exactement à la police de
 la numérisation. Le texte reconnu se modifie ligne par ligne.
 

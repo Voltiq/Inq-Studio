@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.2 — 2026-11-17
+
+### Fixed
+- **Rewriting recognised text keeps its look**: the background and the colour of the letters are measured
+  for every rewrite, also from the inspector's *Apply* (before, only the inline editor did, and the
+  inspector drew black text on white). White text on a coloured button stays white on that colour, and bold
+  lettering is rewritten bold.
+- **Size of recognised text**: the size follows the letters of a line (capitals, ascenders, descenders), so
+  text without tall or descending letters is no longer set too small. Applies to text recognised from now on.
+- **Icons read as letters**: with *Recognise text in pictures too*, a single letter standing apart from any
+  word (a chevron read as "v", a close cross as "x") is left out.
+
 ## 1.6.1 — 2026-11-17
 
 ### Fixed

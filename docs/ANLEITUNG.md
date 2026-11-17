@@ -85,8 +85,9 @@ sagt es Ihnen. Der Tab **Schriften** der Seitenleiste zeigt für jede Schrift, w
 Eine gescannte Seite ist ein Bild; ihre Wörter sind Bildpunkte, kein Text. Nach *Text erkennen* (siehe
 unten) lassen sich die Wörter markieren und auch neu schreiben: mit dem Bearbeiten-Werkzeug auf eine
 erkannte Zeile doppelklicken. Weil die alten Wörter Teil des Bildes sind, deckt Inq Studio die Zeile in der
-Farbe des Papiers ab und zeichnet Ihren Text in der Farbe der Schrift darüber. Der neue Text wird in
-Helvetica oder Arial gesetzt und trifft die Schrift des Scans daher nicht genau. Erkannter Text wird Zeile
+Farbe hinter den Buchstaben ab (Papier, oder die Schaltfläche oder das Bild, auf dem sie stehen) und
+zeichnet Ihren Text in der Farbe der alten Buchstaben darüber, fett, wenn sie fett waren. Der neue Text
+wird in Helvetica oder Arial gesetzt und trifft die Schrift des Scans daher nicht genau. Erkannter Text wird Zeile
 für Zeile bearbeitet.
 
 ## Bilder
