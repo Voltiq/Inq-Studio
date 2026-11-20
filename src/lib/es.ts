@@ -361,6 +361,19 @@ export const es: Record<string, string> = {
   "Link to page {0}": "Enlace a la página {0}",
   "Add link": "Añadir enlace",
 
+  "Text in the box": "Texto del cuadro",
+  "Across": "Horizontal",
+  "Down": "Vertical",
+  "Left": "Izquierda",
+  "Centre": "Centro",
+  "Right": "Derecha",
+  "Top": "Arriba",
+  "Middle": "En medio",
+  "Bottom": "Abajo",
+  "Fit text to box": "Ajustar el texto al cuadro",
+  "Drag the corner of the box on the page to resize it; the text wraps to the new width as you drag.": "Arrastre la esquina del cuadro en la página para cambiar su tamaño; el texto se redistribuye al nuevo ancho mientras arrastra.",
+  "That box is too small.": "Ese cuadro es demasiado pequeño.",
+
   // ----- Protection -----
   "Print": "Imprimir",
   "Print at full quality": "Imprimir con calidad completa",

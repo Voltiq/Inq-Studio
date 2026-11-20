@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, EyeOff, ImageUp, Info, Pencil, Pilcrow, Save, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Download, EyeOff, ImageUp, Info, Pencil, Pilcrow, Save, Scaling, Trash2 } from "lucide-react";
 import type { ToolOptions } from "./PageExtras";
 import { Button } from "./ui/Button";
 import { Lozenge } from "./ui/Feedback";
-import { Select, TextField, Toggle } from "./ui/Field";
+import { Segmented, Select, TextField, Toggle } from "./ui/Field";
 import type { AnnotChange, DocInfo, FontCatalog, FontChoice, FontSummary, LineEdit, Meta } from "../lib/api";
 import { previewStack } from "../lib/fontPreview";
 import { bytes, fontLabel, length, paperName, pdfDate, rgbToHex, hexToRgb } from "../lib/format";
@@ -560,10 +560,63 @@ function AnnotInspector({
         )
       )}
 
+      {a.subtype === "FreeText" && a.editable && (
+        <section className="side-section">
+          <span className="eyebrow">{t("Text in the box")}</span>
+          <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
+            <TextField
+              label={t("Size (pt)")}
+              defaultValue={String(a.size ?? 12)}
+              key={`s-${a.index}-${a.size}`}
+              mono
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value.replace(",", "."));
+                if (v >= 4 && v <= 144 && v !== a.size) onUpdate({ size: v });
+              }}
+            />
+            <div>
+              <span className="field-label">{t("Across")}</span>
+              <Segmented
+                label={t("Across")}
+                value={a.align}
+                onChange={(align) => onUpdate({ align })}
+                options={[
+                  { value: "left", label: t("Left"), icon: AlignLeft },
+                  { value: "center", label: t("Centre"), icon: AlignCenter },
+                  { value: "right", label: t("Right"), icon: AlignRight },
+                ]}
+              />
+            </div>
+            <div>
+              <span className="field-label">{t("Down")}</span>
+              <Segmented
+                label={t("Down")}
+                value={a.valign}
+                onChange={(valign) => onUpdate({ valign })}
+                options={[
+                  { value: "top", label: t("Top"), icon: AlignVerticalJustifyStart },
+                  { value: "middle", label: t("Middle"), icon: AlignVerticalJustifyCenter },
+                  { value: "bottom", label: t("Bottom"), icon: AlignVerticalJustifyEnd },
+                ]}
+              />
+            </div>
+            <div className="inspector-actions" style={{ marginTop: 0 }}>
+              <Button spacing="compact" iconBefore={Scaling} onClick={() => onUpdate({ fit: true })}>
+                {t("Fit text to box")}
+              </Button>
+            </div>
+            <p className="is-muted" style={{ fontSize: 12 }}>
+              {t("Drag the corner of the box on the page to resize it; the text wraps to the new width as you drag.")}
+            </p>
+          </div>
+        </section>
+      )}
+
       {!isLink && (
         <section className="side-section">
           <label className="field">
-            <span className="field-label">{a.subtype === "FreeText" ? "Text" : a.subtype === "Stamp" ? t("Label") : t("Comment")}</span>
+            <span className="field-label">{a.subtype === "FreeText" ? t("Text") : a.subtype === "Stamp" ? t("Label") : t("Comment")}</span>
             <textarea className="text-area" value={contents} onChange={(e) => setContents(e.target.value)} rows={4} />
           </label>
           <div className="inspector-actions">

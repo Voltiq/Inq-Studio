@@ -205,8 +205,33 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
   font_program: () => new ArrayBuffer(0),
   system_fonts: { families: ["Arial", "Calibri", "Segoe UI", "Times New Roman"], standard: ["Helvetica", "Helvetica-Bold", "Times-Roman", "Courier"] },
   page_text: (args: Record<string, unknown>) => samplePageText(Number(args.page ?? 0)),
-  annots_list: [],
-  images_list: [],
+  // A text box on the first page, and the blue rectangle offered as an image, so dragging can be tried.
+  annots_list: (args: Record<string, unknown>) =>
+    Number(args.page ?? 0) === 0
+      ? [
+          {
+            index: 0,
+            subtype: "FreeText",
+            rect: [330, 560, 520, 640],
+            contents: "A text box: drag its corner and the text wraps.",
+            author: "Preview",
+            color: [0.1, 0.1, 0.4],
+            fill: [1, 0.96, 0.7],
+            opacity: 1,
+            width: 1,
+            target: null,
+            removable: true,
+            editable: true,
+            size: 12,
+            align: "left",
+            valign: "top",
+          },
+        ]
+      : [],
+  images_list: (args: Record<string, unknown>) =>
+    Number(args.page ?? 0) === 0
+      ? [{ index: 0, quad: [[72, 400], [252, 400], [252, 490], [72, 490]], bbox: [72, 400, 252, 490], width: 360, height: 180, inline: false, filter: "FlateDecode", colorSpace: "DeviceRGB", bits: 8, hasAlpha: false, dpi: 144 }]
+      : [],
   form_fields: [],
   labels_get: { ranges: [], strings: ["1", "2"] },
   outline_get: [{ title: "Inq Studio sample", page: 0, top: null, open: true, children: [] }, { title: "Second page", page: 1, top: null, open: true, children: [] }],

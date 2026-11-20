@@ -218,6 +218,10 @@ export interface AnnotInfo {
   removable: boolean;
   /** Its appearance can be redrawn after changes. */
   editable: boolean;
+  /** Text boxes: font size, and where the text sits in the box. */
+  size: number | null;
+  align: "left" | "center" | "right";
+  valign: "top" | "middle" | "bottom";
 }
 
 export type AnnotKind =
@@ -266,6 +270,14 @@ export interface AnnotChange {
   dy?: number;
   uri?: string;
   page?: number;
+  /** A new rectangle: resizes text boxes, shapes and stamps. */
+  rect?: Rect;
+  /** Text boxes. */
+  size?: number;
+  align?: "left" | "center" | "right";
+  valign?: "top" | "middle" | "bottom";
+  /** Text boxes: the largest size at which the text fits. */
+  fit?: boolean;
 }
 
 export interface WidgetInfo {

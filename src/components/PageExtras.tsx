@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnnotChange, AnnotInfo, FieldInfo, ImageInfo, NewAnnot, Point, Rect } from "../lib/api";
-import { api } from "../lib/api";
 import type { PageViewport } from "../lib/pdf";
 import { hexToRgb } from "../lib/format";
 import type { Tool } from "../lib/types";
@@ -8,6 +7,8 @@ import { cx } from "../lib/utils";
 import { Button } from "./ui/Button";
 import { Kbd } from "./ui/Feedback";
 import type { Selection } from "./Viewer";
+import { snapMove, snapResize, type Guide, type SnapBox } from "../lib/snap";
+import type { Ghost } from "../lib/ghost";
 import { t } from "../lib/i18n";
 
 export interface ExtraActions {
@@ -30,7 +31,7 @@ export const EXTRA_TOOLS: Tool[] = ["image", "ellipse", "line", "arrow", "polygo
 
 type View = { left: number; top: number; width: number; height: number };
 
-function viewRect(vp: PageViewport, r: Rect): View {
+export function viewRect(vp: PageViewport, r: Rect): View {
   const v = vp.convertToViewportRectangle(r) as number[];
   return { left: Math.min(v[0], v[2]), top: Math.min(v[1], v[3]), width: Math.abs(v[2] - v[0]), height: Math.abs(v[3] - v[1]) };
 }
@@ -133,6 +134,83 @@ function TextFieldInput({ field, style, tip, onCommit }: { field: FieldInfo; sty
 
 const TEXT_MARKUP = new Set([t("Highlight"), t("Underline"), "StrikeOut", t("Squiggly"), "Link", "Widget", "Popup"]);
 
+/** What a page tells its layers about dragging: where things can snap, and how to show a dragged element. */
+export interface DragHelp {
+  /** Snap targets on the page, leaving out the element being dragged. */
+  targets: (except: { annot?: number; image?: number }) => SnapBox[];
+  /** Snapping is on (Settings), unless Alt is held. */
+  snap: boolean;
+  onGuides: (guides: Guide[]) => void;
+  /** A picture of part of the page. */
+  ghost: (box: SnapBox) => Ghost | null;
+}
+
+/** Annotations drawn from their rectangle, which can therefore be resized. */
+const resizable = (subtype: string) => ["FreeText", "Square", "Circle", "Stamp"].includes(subtype);
+
+interface BoxDrag {
+  index: number;
+  mode: "move" | "resize";
+  x0: number;
+  y0: number;
+  dx: number;
+  dy: number;
+  start: View;
+  ghost: Ghost | null;
+  keep?: boolean;
+}
+
+const boxOf = (r: View): SnapBox => ({ x0: r.left, y0: r.top, x1: r.left + r.width, y1: r.top + r.height });
+
+/** Where a drag of `d` leaves a box, snapped as the page allows. */
+function dragged(d: BoxDrag, raw: { dx: number; dy: number; alt: boolean }, help: DragHelp, except: { annot?: number; image?: number }, vp: PageViewport): { dx: number; dy: number; guides: Guide[] } {
+  if (!help.snap || raw.alt) return { dx: raw.dx, dy: raw.dy, guides: [] };
+  const page = { width: vp.width, height: vp.height };
+  const targets = help.targets(except);
+  return d.mode === "move" ? snapMove(boxOf(d.start), raw.dx, raw.dy, targets, { page }) : snapResize(boxOf(d.start), raw.dx, raw.dy, targets, { page });
+}
+
+/** What a text box will look like at its new size, wrapped as the engine wraps it. */
+function TextBoxPreview({ a, scale }: { a: AnnotInfo; scale: number }) {
+  const css = (c: [number, number, number] | null) => (c ? `rgb(${c.map((v) => Math.round(v * 255)).join(",")})` : "transparent");
+  return (
+    <div
+      className="textbox-preview"
+      style={{
+        padding: 4 * scale,
+        fontSize: (a.size ?? 12) * scale,
+        color: css(a.color),
+        background: css(a.fill),
+        textAlign: a.align as "left" | "center" | "right",
+        justifyContent: a.valign === "middle" ? "center" : a.valign === "bottom" ? "flex-end" : "flex-start",
+        boxShadow: a.width > 0 && a.fill ? `inset 0 0 0 ${a.width * scale}px ${css(a.color)}` : undefined,
+      }}
+    >
+      <span>{a.contents}</span>
+    </div>
+  );
+}
+
+/** The spot a dragged element left, covered, and its picture where it is now. */
+function GhostOf({ d }: { d: BoxDrag }) {
+  if (!d.ghost) return null;
+  const g = d.ghost;
+  const stretch = d.mode === "resize";
+  return (
+    <img
+      className="drag-ghost"
+      src={g.url}
+      alt=""
+      style={
+        stretch
+          ? { left: 0, top: 0, width: "100%", height: "100%" }
+          : { left: g.left - d.start.left, top: g.top - d.start.top, width: g.width, height: g.height }
+      }
+      draggable={false}
+    />
+  );
+}
+
 export function AnnotsLayer({
   vp,
   page,
@@ -141,6 +219,7 @@ export function AnnotsLayer({
   onSelect,
   actions,
   showLinks,
+  help,
 }: {
   vp: PageViewport;
   page: number;
@@ -149,21 +228,56 @@ export function AnnotsLayer({
   onSelect: (s: Selection) => void;
   actions: ExtraActions;
   showLinks: boolean;
+  help: DragHelp;
 }) {
-  const [drag, setDrag] = useState<{ index: number; x0: number; y0: number; dx: number; dy: number } | null>(null);
+  const [drag, setDrag] = useState<BoxDrag | null>(null);
   const shown = annots.filter((a) => (showLinks ? a.subtype === "Link" : !TEXT_MARKUP.has(a.subtype)));
   return (
     <div className="overlay" style={{ pointerEvents: "none" }}>
+      {drag?.ghost && <div className="drag-cover" style={{ left: drag.ghost.left, top: drag.ghost.top, width: drag.ghost.width, height: drag.ghost.height, background: drag.ghost.cover }} />}
       {shown.map((a) => {
         const r = viewRect(vp, a.rect);
         const selected = selection?.kind === "annot" && selection.page === page && selection.annot.index === a.index;
         const d = drag?.index === a.index ? drag : null;
+        let { left, top, width, height } = r;
+        if (d?.mode === "move") {
+          left += d.dx;
+          top += d.dy;
+        } else if (d?.mode === "resize") {
+          width = Math.max(12, width + d.dx);
+          height = Math.max(12, height + d.dy);
+        }
+        const begin = (e: React.PointerEvent, mode: "move" | "resize") => {
+          e.stopPropagation();
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          setDrag({ index: a.index, mode, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, start: r, ghost: help.ghost(boxOf(r)) });
+        };
+        const follow = (e: React.PointerEvent) => {
+          if (!drag) return;
+          const s = dragged(drag, { dx: e.clientX - drag.x0, dy: e.clientY - drag.y0, alt: e.altKey }, help, { annot: a.index }, vp);
+          help.onGuides(s.guides);
+          setDrag({ ...drag, dx: s.dx, dy: s.dy });
+        };
+        const finish = async () => {
+          if (!drag) return;
+          const m = drag;
+          setDrag(null);
+          help.onGuides([]);
+          if (Math.hypot(m.dx, m.dy) < 2) return;
+          if (m.mode === "move") {
+            const p0 = vp.convertToPdfPoint(0, 0) as number[];
+            const p1 = vp.convertToPdfPoint(m.dx, m.dy) as number[];
+            await actions.updateAnnot(page, a.index, { dx: p1[0] - p0[0], dy: p1[1] - p0[1] });
+          } else {
+            await actions.updateAnnot(page, a.index, { rect: pdfRect(vp, left, top, left + width, top + height) });
+          }
+        };
         return (
           <div
             key={a.index}
-            className={cx("annot-box", selected && "is-selected", a.subtype === "Link" && "is-link")}
-            style={{ ...r, left: r.left + (d?.dx ?? 0), top: r.top + (d?.dy ?? 0), pointerEvents: "auto", cursor: selected && a.editable ? "move" : "pointer" }}
-            data-tooltip={a.subtype === "Link" ? a.target ?? "Link" : a.contents || a.subtype}
+            className={cx("annot-box", selected && "is-selected", a.subtype === "Link" && "is-link", d && "is-dragging")}
+            style={{ left, top, width, height, pointerEvents: "auto", cursor: selected && a.editable ? "move" : "pointer" }}
+            data-tooltip={d ? undefined : a.subtype === "Link" ? a.target ?? "Link" : a.contents || a.subtype}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               e.stopPropagation();
@@ -172,20 +286,15 @@ export function AnnotsLayer({
                 return;
               }
               if (!a.editable) return;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              setDrag({ index: a.index, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 });
+              begin(e, "move");
             }}
-            onPointerMove={(e) => drag && setDrag({ ...drag, dx: e.clientX - drag.x0, dy: e.clientY - drag.y0 })}
-            onPointerUp={async () => {
-              if (!drag) return;
-              const m = drag;
-              setDrag(null);
-              if (Math.hypot(m.dx, m.dy) < 2) return;
-              const p0 = vp.convertToPdfPoint(0, 0) as number[];
-              const p1 = vp.convertToPdfPoint(m.dx, m.dy) as number[];
-              await actions.updateAnnot(page, a.index, { dx: p1[0] - p0[0], dy: p1[1] - p0[1] });
-            }}
-          />
+            onPointerMove={follow}
+            onPointerUp={finish}
+          >
+            {d && !(d.mode === "resize" && a.subtype === "FreeText") && <GhostOf d={d} />}
+            {d?.mode === "resize" && a.subtype === "FreeText" && <TextBoxPreview a={a} scale={vp.scale} />}
+            {selected && a.editable && resizable(a.subtype) && <span className="resize-handle" aria-label={t("Resize")} onPointerDown={(e) => begin(e, "resize")} />}
+          </div>
         );
       })}
     </div>
@@ -199,35 +308,25 @@ export function AnnotsLayer({
 export function ImagesLayer({
   vp,
   page,
-  docId,
-  revision,
+  images,
   selection,
   onSelect,
   actions,
+  help,
 }: {
   vp: PageViewport;
   page: number;
-  docId: number;
-  revision: number;
+  images: ImageInfo[];
   selection: Selection;
   onSelect: (s: Selection) => void;
   actions: ExtraActions;
+  help: DragHelp;
 }) {
-  const [images, setImages] = useState<ImageInfo[]>([]);
-  const [drag, setDrag] = useState<{ index: number; mode: "move" | "resize"; x0: number; y0: number; dx: number; dy: number; keep: boolean } | null>(null);
-  useEffect(() => {
-    let live = true;
-    api
-      .images(docId, page)
-      .then((l) => live && setImages(l))
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [docId, page, revision]);
+  const [drag, setDrag] = useState<BoxDrag | null>(null);
   if (!images.length) return null;
   return (
     <div className="overlay" style={{ pointerEvents: "none" }}>
+      {drag?.ghost && <div className="drag-cover" style={{ left: drag.ghost.left, top: drag.ghost.top, width: drag.ghost.width, height: drag.ghost.height, background: drag.ghost.cover }} />}
       {images.map((im) => {
         const r = viewRect(vp, im.bbox);
         const selected = selection?.kind === "image" && selection.page === page && selection.image.index === im.index;
@@ -240,23 +339,31 @@ export function ImagesLayer({
           width = Math.max(8, width + d.dx);
           height = d.keep ? (width * r.height) / r.width : Math.max(8, height + d.dy);
         }
-        const start = (e: React.PointerEvent, mode: "move" | "resize") => {
+        const begin = (e: React.PointerEvent, mode: "move" | "resize") => {
           e.stopPropagation();
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          setDrag({ index: im.index, mode, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, keep: !e.shiftKey });
+          setDrag({ index: im.index, mode, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, start: r, ghost: help.ghost(boxOf(r)), keep: !e.shiftKey });
+        };
+        const follow = (e: React.PointerEvent) => {
+          if (!drag) return;
+          const s = dragged(drag, { dx: e.clientX - drag.x0, dy: e.clientY - drag.y0, alt: e.altKey }, help, { image: im.index }, vp);
+          help.onGuides(s.guides);
+          setDrag({ ...drag, dx: s.dx, dy: s.dy, keep: !e.shiftKey });
         };
         const finish = async () => {
-          if (!d) return;
+          if (!drag) return;
+          const m = drag;
           setDrag(null);
-          if (Math.hypot(d.dx, d.dy) < 2) return;
+          help.onGuides([]);
+          if (Math.hypot(m.dx, m.dy) < 2) return;
           await actions.placeImage(page, im.index, pdfRect(vp, left, top, left + width, top + height));
         };
         return (
           <div
             key={im.index}
-            className={cx("image-box", selected && "is-selected")}
+            className={cx("image-box", selected && "is-selected", d && "is-dragging")}
             style={{ left, top, width, height, pointerEvents: "auto" }}
-            data-tooltip={t("{0} × {1} px · {2} dpi", im.width, im.height, Math.round(im.dpi))}
+            data-tooltip={d ? undefined : t("{0} × {1} px · {2} dpi", im.width, im.height, Math.round(im.dpi))}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               if (!selected) {
@@ -264,20 +371,13 @@ export function ImagesLayer({
                 onSelect({ kind: "image", page, image: im });
                 return;
               }
-              start(e, "move");
+              begin(e, "move");
             }}
-            onPointerMove={(e) => drag && setDrag({ ...drag, dx: e.clientX - drag.x0, dy: e.clientY - drag.y0, keep: !e.shiftKey })}
+            onPointerMove={follow}
             onPointerUp={finish}
           >
-            {selected && (
-              <span
-                className="resize-handle"
-                aria-label={t("Resize")}
-                onPointerDown={(e) => start(e, "resize")}
-                onPointerMove={(e) => drag && setDrag({ ...drag, dx: e.clientX - drag.x0, dy: e.clientY - drag.y0, keep: !e.shiftKey })}
-                onPointerUp={finish}
-              />
-            )}
+            {d && <GhostOf d={d} />}
+            {selected && <span className="resize-handle" aria-label={t("Resize")} onPointerDown={(e) => begin(e, "resize")} />}
           </div>
         );
       })}

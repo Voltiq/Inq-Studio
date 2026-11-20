@@ -33,6 +33,12 @@ pub struct AnnotInfo {
     pub removable: bool,
     /// Its appearance can be regenerated after a change.
     pub editable: bool,
+    /// Text boxes: font size, and where the text sits in the box.
+    pub size: Option<f32>,
+    /// left | center | right
+    pub align: String,
+    /// top | middle | bottom
+    pub valign: String,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -74,6 +80,65 @@ pub struct AnnotChange {
     pub dy: f32,
     pub uri: Option<String>,
     pub page: Option<usize>,
+    /// A new rectangle (text boxes: resized; the text wraps again).
+    pub rect: Option<[f32; 4]>,
+    /// Text boxes: font size, alignment across (left | center | right) and down (top | middle | bottom).
+    pub size: Option<f32>,
+    pub align: Option<String>,
+    pub valign: Option<String>,
+    /// Text boxes: set the largest size at which the text fits the box.
+    pub fit: bool,
+}
+
+/// The font size in a text box's default appearance string.
+fn da_size(doc: &Document, d: &Dictionary) -> f32 {
+    let da = get(doc, d, b"DA").and_then(|o| o.as_str().ok()).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default();
+    da.split_whitespace().collect::<Vec<_>>().windows(2).find(|w| w[1] == "Tf").and_then(|w| w[0].parse::<f32>().ok()).unwrap_or(12.0)
+}
+
+/// Horizontal alignment from /Q, vertical from Inq's own key (the standard has none).
+fn box_align(doc: &Document, d: &Dictionary) -> (&'static str, &'static str) {
+    let q = get_num(doc, d, b"Q").unwrap_or(0.0) as i64;
+    let v = get_name(doc, d, b"InqVAlign").unwrap_or_default();
+    (
+        match q {
+            1 => "center",
+            2 => "right",
+            _ => "left",
+        },
+        match v.as_str() {
+            "Middle" => "middle",
+            "Bottom" => "bottom",
+            _ => "top",
+        },
+    )
+}
+
+/// Inner padding of a text box, in points.
+const BOX_PAD: f32 = 4.0;
+
+/// The largest size (up to 72 pt) at which `text` wraps into a box of this size.
+pub fn fitting_size(text: &str, width: f32, height: f32) -> f32 {
+    let (w, h) = ((width - BOX_PAD * 2.0).max(1.0), (height - BOX_PAD * 2.0).max(1.0));
+    let fits = |size: f32| {
+        let lines = wrap_text(text, size, w);
+        let tall = lines.len() as f32 * size * 1.2 - size * 0.2;
+        let wide = lines.iter().all(|l| helv_width(l, false) * size <= w + 0.01);
+        tall <= h && wide
+    };
+    let (mut lo, mut hi) = (4.0f32, 72.0f32);
+    if !fits(lo) {
+        return lo;
+    }
+    for _ in 0..20 {
+        let mid = (lo + hi) / 2.0;
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo * 2.0).floor() / 2.0
 }
 
 /// "D:20261110120000Z" for now.
@@ -193,6 +258,9 @@ pub fn list(doc: &Document, page_id: ObjectId) -> Vec<AnnotInfo> {
                 fill: color_of(doc, d, b"IC"),
                 opacity: get_num(doc, d, b"CA").unwrap_or(1.0),
                 width,
+                size: (get_name(doc, d, b"Subtype").as_deref() == Some("FreeText")).then(|| da_size(doc, d)),
+                align: box_align(doc, d).0.into(),
+                valign: box_align(doc, d).1.into(),
             })
         })
         .collect()
@@ -424,8 +492,9 @@ fn build_ap(doc: &mut Document, d: &Dictionary) -> Option<ObjectId> {
                 .and_then(|w| w[0].parse::<f32>().ok())
                 .unwrap_or(12.0);
             fonts.set("Helv", helvetica(false));
-            let pad = 4.0;
+            let pad = BOX_PAD;
             let lines = wrap_text(&text, size, r[2] - r[0] - pad * 2.0);
+            let (align, valign) = box_align(doc, d);
             let mut s = String::new();
             if let Some(fc) = fill {
                 s.push_str(&format!("{} rg {} {} {} {} re f\n", rgb(fc), f(r[0]), f(r[1]), f(r[2] - r[0]), f(r[3] - r[1])));
@@ -437,9 +506,24 @@ fn build_ap(doc: &mut Document, d: &Dictionary) -> Option<ObjectId> {
                 ));
             }
             s.push_str(&format!("q {} {} {} {} re W n BT /Helv {} Tf {c} rg\n", f(r[0]), f(r[1]), f(r[2] - r[0]), f(r[3] - r[1]), f(size)));
-            let mut y = r[3] - pad - size * 0.85;
+            // The block of lines, from the top of the first to the bottom of the last.
+            let block = lines.len() as f32 * size * 1.2 - size * 0.2;
+            let room = r[3] - r[1] - pad * 2.0;
+            let top = match valign {
+                "middle" => r[3] - pad - (room - block).max(0.0) / 2.0,
+                "bottom" => r[1] + pad + block,
+                _ => r[3] - pad,
+            };
+            let mut y = top - size * 0.85;
+            let inner = r[2] - r[0] - pad * 2.0;
             for l in lines {
-                s.push_str(&format!("1 0 0 1 {} {} Tm {} Tj\n", f(r[0] + pad), f(y), hex_win_ansi(&l)));
+                let w = helv_width(&l, false) * size;
+                let x = match align {
+                    "center" => r[0] + pad + (inner - w) / 2.0,
+                    "right" => r[2] - pad - w,
+                    _ => r[0] + pad,
+                };
+                s.push_str(&format!("1 0 0 1 {} {} Tm {} Tj\n", f(x), f(y), hex_win_ansi(&l)));
                 y -= size * 1.2;
             }
             s.push_str("ET Q\n");
@@ -702,6 +786,39 @@ pub fn update(doc: &mut Document, page_id: ObjectId, index: usize, ch: &AnnotCha
                 })
                 .collect();
             d.set("InkList", moved);
+        }
+    }
+    if let Some(r) = ch.rect {
+        let r = [r[0].min(r[2]), r[1].min(r[3]), r[0].max(r[2]), r[1].max(r[3])];
+        if r[2] - r[0] < 4.0 || r[3] - r[1] < 4.0 {
+            return Err("That box is too small.".into());
+        }
+        d.set("Rect", r.iter().map(|v| real(*v)).collect::<Vec<_>>());
+    }
+    if subtype == "FreeText" {
+        let colour = color_of(doc, &d, b"C").unwrap_or([0.0; 3]);
+        let mut size = ch.size.map(|s| s.clamp(4.0, 144.0));
+        if ch.fit {
+            let r = d.get(b"Rect").ok().and_then(|o| rect(doc, o)).unwrap_or([0.0; 4]);
+            let text = get(doc, &d, b"Contents").and_then(|o| lopdf::decode_text_string(o).ok()).unwrap_or_default();
+            size = Some(fitting_size(&text, r[2] - r[0], r[3] - r[1]));
+        }
+        if let Some(size) = size {
+            d.set("DA", Object::string_literal(format!("/Helv {} Tf {} rg", f(size), rgb(colour))));
+        }
+        match ch.align.as_deref() {
+            Some("center") => d.set("Q", 1),
+            Some("right") => d.set("Q", 2),
+            Some(_) => d.set("Q", 0),
+            None => {}
+        }
+        match ch.valign.as_deref() {
+            Some("middle") => d.set("InqVAlign", Object::Name(b"Middle".to_vec())),
+            Some("bottom") => d.set("InqVAlign", Object::Name(b"Bottom".to_vec())),
+            Some(_) => {
+                d.remove(b"InqVAlign");
+            }
+            None => {}
         }
     }
     if subtype == "Link" {

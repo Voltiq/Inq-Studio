@@ -57,8 +57,10 @@ Mit dem Werkzeug **Auswählen** (`V`) wird Text markiert und kopiert; die **Hand
 
 - **Doppelklick** auf eine Zeile schreibt sie neu. Gehört die Zeile zu einem Absatz, öffnet sich der ganze
   Absatz und wird beim Bestätigen mit `Strg+Eingabe` neu auf seine Spalte umbrochen.
-- **Ziehen** verschiebt eine Zeile; sie rastet an Kanten und Grundlinien anderer Zeilen ein (`Alt` verschiebt
-  frei). Die Pfeiltasten verschieben fein. `Entf` löscht. `Umschalt`-Klick oder ein aufgezogener Rahmen wählt
+- **Ziehen** verschiebt eine Zeile. Sie bewegt sich als sie selbst und rastet mit linker Kante, Mitte,
+  rechter Kante, Ober- und Unterkante oder Grundlinie an denen der nächsten Zeilen, Bilder und Anmerkungen
+  ein, und an den Rändern und der Mitte der Seite; rosa Hilfslinien zeigen, woran sie ausgerichtet ist
+  (`Alt` verschiebt frei). Die Pfeiltasten verschieben fein. `Entf` löscht. `Umschalt`-Klick oder ein aufgezogener Rahmen wählt
   mehrere Zeilen.
 - **Legen** Sie eine Zeile am Ende oder am Anfang einer anderen ab, **verbinden sich beide zu einer Zeile**:
   Die Zielzeile wird beim Ziehen umrandet, und jedes Wort behält Schrift, Größe und Farbe. Mit `Alt`
@@ -100,7 +102,11 @@ Inspektor lässt es sich ersetzen, speichern oder löschen. **Bild einfügen** (
 Hervorheben (`M`), Unterstreichen (`U`) und Durchstreichen (`K`) durch Ziehen über Text. Notiz (`N`),
 Zeichnen (`D`), Rechteck, Ellipse, Linie, Pfeil, Vieleck, Textfeld (`B`), Stempel (`S`) und Links (`L`) durch
 Klicken oder Ziehen auf der Seite. Mit dem Auswählen-Werkzeug eine Anmerkung anklicken, um sie im Inspektor
-zu ändern, oder ziehen, um sie zu verschieben.
+zu ändern, oder ziehen, um sie zu verschieben; sie rastet ein wie Text. Textfelder, Rechtecke, Ellipsen und
+Stempel haben zudem einen Griff an der Ecke zum Skalieren. Ein Textfeld bricht seinen Text dabei auf die neue
+Größe um, und der Inspektor stellt die Schriftgröße ein, wo der Text waagerecht (links, Mitte, rechts) und
+senkrecht (oben, mittig, unten) steht, und *Text ans Feld anpassen* wählt die größte Größe, die passt.
+Bilder (Bearbeiten-Werkzeug) rasten beim Verschieben und Skalieren genauso ein.
 
 ## Formulare
 

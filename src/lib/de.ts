@@ -376,6 +376,19 @@ export const de: Record<string, string> = {
   "Link to page {0}": "Link zu Seite {0}",
   "Add link": "Link hinzufügen",
 
+  "Text in the box": "Text im Feld",
+  "Across": "Waagerecht",
+  "Down": "Senkrecht",
+  "Left": "Links",
+  "Centre": "Mitte",
+  "Right": "Rechts",
+  "Top": "Oben",
+  "Middle": "Mittig",
+  "Bottom": "Unten",
+  "Fit text to box": "Text ans Feld anpassen",
+  "Drag the corner of the box on the page to resize it; the text wraps to the new width as you drag.": "Ziehen Sie die Ecke des Felds auf der Seite, um es zu skalieren; der Text bricht dabei auf die neue Breite um.",
+  "That box is too small.": "Dieses Feld ist zu klein.",
+
   // ----- Protection -----
   "Print": "Drucken",
   "Print at full quality": "In voller Qualität drucken",

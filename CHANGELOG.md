@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.0 — 2026-11-20
+
+### Added
+- **Snapping to what is near**: dragged text lines, text boxes, shapes, stamps and images snap their left
+  edge, centre, right edge, top, middle, bottom or baseline to those of the nearest lines, images and
+  annotations, and to the edges and centre of the page. Pink guides run along everything that lines up.
+  `Alt` moves freely.
+- **Resizing text boxes**: text boxes, rectangles, ellipses and stamps have a handle at their corner. A text
+  box wraps its text to the new size while you drag.
+- **Text in a text box**: the inspector sets its font size, where it sits across (left, centre, right) and
+  down (top, middle, bottom), and *Fit text to box* picks the largest size that fits.
+
+### Changed
+- Whatever is dragged moves as itself under the pointer, not as an empty outline, and the spot it left is
+  covered while you drag. Several selected lines snap together as one block.
+
 ## 1.6.2 — 2026-11-17
 
 ### Fixed

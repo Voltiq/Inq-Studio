@@ -361,6 +361,19 @@ export const fr: Record<string, string> = {
   "Link to page {0}": "Lien vers la page {0}",
   "Add link": "Ajouter un lien",
 
+  "Text in the box": "Texte de la zone",
+  "Across": "Horizontal",
+  "Down": "Vertical",
+  "Left": "Gauche",
+  "Centre": "Centre",
+  "Right": "Droite",
+  "Top": "Haut",
+  "Middle": "Milieu",
+  "Bottom": "Bas",
+  "Fit text to box": "Ajuster le texte à la zone",
+  "Drag the corner of the box on the page to resize it; the text wraps to the new width as you drag.": "Faites glisser le coin de la zone sur la page pour la redimensionner ; le texte se remet en lignes à la nouvelle largeur pendant le glissement.",
+  "That box is too small.": "Cette zone est trop petite.",
+
   // ----- Protection -----
   "Print": "Imprimer",
   "Print at full quality": "Imprimer en pleine qualité",

@@ -59,7 +59,9 @@ Elija **Editar texto e imágenes** (`E`). Cada línea recibe un contorno.
 
 - **Doble clic** en una línea para reescribirla. Si la línea forma parte de un párrafo, se abre el párrafo
   entero y se vuelve a distribuir en su columna al confirmar con `Ctrl+Intro`.
-- **Arrastre** una línea para moverla; se ajusta a los bordes y líneas base de otras líneas (`Alt` mueve
+- **Arrastre** una línea para moverla. Se mueve tal cual es y ajusta su borde izquierdo, centro, borde
+  derecho, parte superior, inferior o línea base a los de las líneas, imágenes y anotaciones más cercanas, y
+  a los bordes y el centro de la página; unas guías rosas muestran con qué se alinea (`Alt` mueve
   libremente). Las flechas desplazan poco a poco. `Supr` la elimina. `Mayús`+clic o arrastre un recuadro
   para seleccionar varias líneas.
 - **Suelte** una línea al final o al principio de otra y ambas **se unen en una sola línea**: la línea
@@ -102,7 +104,12 @@ su esquina para cambiar el tamaño, y reemplácela, guárdela o elimínela en el
 Resalte (`M`), subraye (`U`) y tache (`K`) arrastrando sobre el texto. La nota (`N`), el dibujo (`D`), el
 rectángulo, la elipse, la línea, la flecha, el polígono, el cuadro de texto (`B`), el sello (`S`) y los
 enlaces (`L`) funcionan haciendo clic o arrastrando en la página. Con la herramienta Seleccionar, haga clic
-en uno para cambiarlo en el inspector o arrástrelo para moverlo.
+en uno para cambiarlo en el inspector o arrástrelo para moverlo; se ajusta como el texto. Los cuadros de
+texto, rectángulos, elipses y sellos tienen además un tirador en la esquina para cambiar su tamaño. Un cuadro
+de texto redistribuye su texto al nuevo tamaño mientras arrastra, y el inspector fija el tamaño de la fuente,
+dónde se sitúa el texto en horizontal (izquierda, centro, derecha) y en vertical (arriba, en medio, abajo), y
+*Ajustar el texto al cuadro* elige el mayor tamaño que cabe. Las imágenes (herramienta de edición) se ajustan
+igual al moverlas o cambiar su tamaño.
 
 ## Formularios
 

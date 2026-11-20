@@ -20,7 +20,9 @@ import {
 import { usePageStamps } from "../lib/stamps";
 import { lookOnCanvas, registerPage } from "../lib/pageColours";
 import { pdfjs, type PDFDocumentProxy, type PageViewport, type SearchHit } from "../lib/pdf";
-import { AnnotsLayer, EXTRA_TOOLS, FieldsLayer, ImagesLayer, ShapesLayer, type ExtraActions, type ToolOptions } from "./PageExtras";
+import { AnnotsLayer, EXTRA_TOOLS, FieldsLayer, ImagesLayer, ShapesLayer, viewRect, type DragHelp, type ExtraActions, type ToolOptions } from "./PageExtras";
+import { snapMove, type Guide, type SnapBox } from "../lib/snap";
+import { takeGhost, type Ghost } from "../lib/ghost";
 import type { FieldInfo, ImageInfo, Rect } from "../lib/api";
 import { previewStack } from "../lib/fontPreview";
 import { hexToRgb, rgbToHex } from "../lib/format";
@@ -486,9 +488,11 @@ function PageView({
   const [rendered, setRendered] = useState(false);
   const [text, setText] = useState<PageText | null>(null);
   const [annots, setAnnots] = useState<AnnotInfo[]>([]);
+  const [images, setImages] = useState<ImageInfo[]>([]);
   const [hitRects, setHitRects] = useState<{ r: [number, number, number, number]; current: boolean }[]>([]);
 
-  const needLines = tool === "edit" || MARKUP.includes(tool);
+  // Lines are also snap targets for annotations dragged with the select tool.
+  const needLines = tool === "edit" || tool === "select" || MARKUP.includes(tool);
 
   // Render the page into an offscreen canvas, then swap it in (no flicker on edits).
   useEffect(() => {
@@ -562,7 +566,7 @@ function PageView({
   }, [docId, revision, index, needLines]);
 
   useEffect(() => {
-    if (tool !== "select" && tool !== "link") return;
+    if (tool !== "select" && tool !== "link" && tool !== "edit") return;
     let cancelled = false;
     api
       .annots(docId, index)
@@ -608,6 +612,46 @@ function PageView({
   const lines = useMemo(() => text?.lines ?? [], [text]);
   const geo = useMemo(() => (vp ? lines.map((l) => quadGeometry(vp, l.quad)) : []), [vp, lines]);
 
+  // Images on the page: moved in the edit tool, and snap targets for every drag.
+  useEffect(() => {
+    if (tool !== "edit" && tool !== "select") return;
+    let live = true;
+    api
+      .images(docId, index)
+      .then((l) => live && setImages(l))
+      .catch(() => live && setImages([]));
+    return () => {
+      live = false;
+    };
+  }, [docId, index, revision, tool]);
+
+  /** What a dragged element can snap to: lines (with their baselines), images and annotations. */
+  const snapBoxes = useCallback(
+    (except: { lines?: Set<number>; annot?: number; image?: number }): SnapBox[] => {
+      if (!vp) return [];
+      const out: SnapBox[] = [];
+      lines.forEach((l, i) => {
+        const g = geo[i];
+        if (!g || except.lines?.has(l.id) || l.invisible || Math.abs(g.angle) > 0.5) return;
+        const base = (vp.convertToViewportPoint(l.origin[0], l.origin[1]) as number[])[1];
+        out.push({ x0: g.bbox[0], y0: g.bbox[1], x1: g.bbox[2], y1: g.bbox[3], base });
+      });
+      for (const im of images) {
+        if (im.index === except.image) continue;
+        const r = viewRect(vp, im.bbox);
+        out.push({ x0: r.left, y0: r.top, x1: r.left + r.width, y1: r.top + r.height });
+      }
+      for (const a of annots) {
+        if (a.index === except.annot || a.subtype === "Popup" || a.subtype === "Widget") continue;
+        const r = viewRect(vp, a.rect);
+        out.push({ x0: r.left, y0: r.top, x1: r.left + r.width, y1: r.top + r.height });
+      }
+      return out;
+    },
+    [vp, lines, geo, images, annots],
+  );
+
+
   const toPdf = useCallback((x: number, y: number): Point => vp!.convertToPdfPoint(x, y) as Point, [vp]);
   const local = (e: React.PointerEvent | React.MouseEvent): [number, number] => {
     const r = overlayRef.current!.getBoundingClientRect();
@@ -635,9 +679,21 @@ function PageView({
   // ----- Interaction state -----
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
   const [move, setMove] = useState<{ x0: number; y0: number; dx: number; dy: number; free: boolean } | null>(null);
-  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const [guides, setGuides] = useState<Guide[]>([]);
+  /** A picture of the lines being dragged, which follows the pointer. */
+  const [lineGhost, setLineGhost] = useState<Ghost | null>(null);
+
+  const help: DragHelp = useMemo(
+    () => ({
+      targets: snapBoxes,
+      snap,
+      onGuides: setGuides,
+      ghost: (box) => takeGhost(canvasRef.current, vp, box),
+    }),
+    [snapBoxes, snap, vp],
+  );
   /** Where a moved line can snap: other lines' left edges and baselines, and the ends it can join. */
-  const snapTargets = useRef<{ xs: number[]; ys: number[]; left: number; base: number; joins: { id: number; before: boolean; x: number; base: number }[] } | null>(null);
+  const snapTargets = useRef<{ box: SnapBox; targets: SnapBox[]; left: number; base: number; joins: { id: number; before: boolean; x: number; base: number }[] } | null>(null);
   /** The line the dragged one will join when dropped here. */
   const [joinTo, setJoinTo] = useState<{ id: number; before: boolean } | null>(null);
   const [ink, setInk] = useState<[number, number][] | null>(null);
@@ -743,27 +799,20 @@ function PageView({
       let dx = x - move.x0;
       let dy = y - move.y0;
       const t = snapTargets.current;
-      let gx: number | null = null;
-      let gy: number | null = null;
+      let shown: Guide[] = [];
       // Dropped at the end or the start of another line, the dragged line joins it.
       const j = t && join && !e.altKey ? t.joins.find((c) => Math.abs(t.left + dx - c.x) < JOIN_PX && Math.abs(t.base + dy - c.base) < JOIN_PX) : undefined;
       if (t && j) {
         dx = j.x - t.left;
         dy = j.base - t.base;
-        gy = j.base;
-      } else if (t && snap && !e.altKey) {
-        const nx = t.xs.find((v) => Math.abs(t.left + dx - v) < SNAP_PX);
-        if (nx !== undefined) {
-          dx = nx - t.left;
-          gx = nx;
-        }
-        const ny = t.ys.find((v) => Math.abs(t.base + dy - v) < SNAP_PX);
-        if (ny !== undefined) {
-          dy = ny - t.base;
-          gy = ny;
-        }
+      } else if (t && snap && !e.altKey && vp) {
+        // Edges, centres and baselines of the nearest lines, images, annotations and the page.
+        const s = snapMove(t.box, dx, dy, t.targets, { threshold: SNAP_PX, page: { width: vp.width, height: vp.height } });
+        dx = s.dx;
+        dy = s.dy;
+        shown = s.guides;
       }
-      setGuides({ x: gx, y: gy });
+      setGuides(shown);
       setJoinTo(j ? { id: j.id, before: j.before } : null);
       setMove({ ...move, dx, dy });
     }
@@ -831,7 +880,8 @@ function PageView({
       const j = joinTo;
       setMove(null);
       setJoinTo(null);
-      setGuides({ x: null, y: null });
+      setLineGhost(null);
+      setGuides([]);
       snapTargets.current = null;
       if (Math.hypot(m.dx, m.dy) > 1 && vp && text && sel) {
         const a = toPdf(m.x0, m.y0);
@@ -847,8 +897,6 @@ function PageView({
     if (!vp) return;
     const own = geo[l.id];
     const base = (vp.convertToViewportPoint(l.origin[0], l.origin[1]) as number[])[1];
-    const xs: number[] = [];
-    const ys: number[] = [];
     const joins: { id: number; before: boolean; x: number; base: number }[] = [];
     // One line on its own can join another: after its end, or in front of its start, a space apart.
     const single = selectedIds.size === 1 && l.editable && !l.invisible;
@@ -856,15 +904,23 @@ function PageView({
     lines.forEach((o, i) => {
       if (selectedIds.has(o.id) || Math.abs(geo[i].angle) > 0.5 || o.invisible) return;
       const y = (vp.convertToViewportPoint(o.origin[0], o.origin[1]) as number[])[1];
-      xs.push(geo[i].bbox[0]);
-      ys.push(y);
       if (single && o.editable) {
         const gap = 0.28 * Math.max(o.em, l.em) * vp.scale;
         joins.push({ id: o.id, before: false, x: geo[i].bbox[2] + gap, base: y });
         joins.push({ id: o.id, before: true, x: geo[i].bbox[0] - gap - width, base: y });
       }
     });
-    snapTargets.current = Math.abs(own.angle) > 0.5 ? null : { xs, ys, left: own.bbox[0], base, joins };
+    // Everything selected moves together: snap the box around all of it.
+    const picked = lines.filter((o) => selectedIds.has(o.id)).map((o) => geo[o.id].bbox);
+    const box: SnapBox = {
+      x0: Math.min(...picked.map((b) => b[0])),
+      y0: Math.min(...picked.map((b) => b[1])),
+      x1: Math.max(...picked.map((b) => b[2])),
+      y1: Math.max(...picked.map((b) => b[3])),
+      base,
+    };
+    snapTargets.current = Math.abs(own.angle) > 0.5 ? null : { box, targets: snapBoxes({ lines: selectedIds }), left: own.bbox[0], base, joins };
+    setLineGhost(Math.abs(own.angle) > 0.5 ? null : takeGhost(canvasRef.current, vp, box));
     setMove({ x0: x, y0: y, dx: 0, dy: 0, free });
   };
 
@@ -906,8 +962,16 @@ function PageView({
         <div key={i} className={cx("search-hit", h.current && "is-current")} style={{ left: h.r[0], top: h.r[1], width: h.r[2], height: h.r[3] }} />
       ))}
 
+      {guides.map((g, i) => (
+        <div
+          key={i}
+          className={cx("snap-guide", g.axis === "x" ? "is-vertical" : "is-horizontal")}
+          style={g.axis === "x" ? { left: g.at, top: g.from - 8, height: g.to - g.from + 16 } : { top: g.at, left: g.from - 8, width: g.to - g.from + 16 }}
+        />
+      ))}
+
       {(tool === "select" || tool === "link") && vp && (
-        <AnnotsLayer vp={vp} page={index} annots={annots} selection={selection} onSelect={onSelect} actions={actions} showLinks={tool === "link"} />
+        <AnnotsLayer vp={vp} page={index} annots={annots} selection={selection} onSelect={onSelect} actions={actions} showLinks={tool === "link"} help={help} />
       )}
       {tool === "select" && vp && fields.length > 0 && <FieldsLayer vp={vp} page={index} fields={fields} actions={actions} />}
       {vp && (
@@ -937,12 +1001,11 @@ function PageView({
             setDrag(null);
             setMove(null);
             setMark(null);
-            setGuides({ x: null, y: null });
+            setLineGhost(null);
+            setGuides([]);
           }}
         >
-          {tool === "edit" && (
-            <ImagesLayer vp={vp} page={index} docId={docId} revision={revision} selection={selection} onSelect={onSelect} actions={actions} />
-          )}
+          {tool === "edit" && <ImagesLayer vp={vp} page={index} images={images} selection={selection} onSelect={onSelect} actions={actions} help={help} />}
           {tool === "edit" &&
             lines.map((l, i) => {
               const g = geo[i];
@@ -1031,8 +1094,12 @@ function PageView({
               <span className="join-badge">{t("Joins into one line")}</span>
             </div>
           )}
-          {guides.x !== null && <div className="snap-guide is-vertical" style={{ left: guides.x }} />}
-          {guides.y !== null && <div className="snap-guide is-horizontal" style={{ top: guides.y }} />}
+          {move && lineGhost && (
+            <>
+              <div className="drag-cover" style={{ left: lineGhost.left, top: lineGhost.top, width: lineGhost.width, height: lineGhost.height, background: lineGhost.cover }} />
+              <img className="drag-ghost" src={lineGhost.url} alt="" draggable={false} style={{ left: lineGhost.left + move.dx, top: lineGhost.top + move.dy, width: lineGhost.width, height: lineGhost.height }} />
+            </>
+          )}
 
           {editingLine && (
             <InlineEditor

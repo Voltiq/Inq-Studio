@@ -53,8 +53,9 @@ Choose **Edit text and images** (`E`). Every line gets an outline.
 
 - **Double-click** a line to rewrite it. If the line is part of a paragraph, the whole paragraph opens and is
   re-wrapped to its column when you confirm with `Ctrl+Enter`.
-- **Drag** a line to move it; it snaps to the edges and baselines of other lines (`Alt` moves freely). Arrow
-  keys nudge. `Delete` removes it. `Shift`-click or drag a box to select several lines.
+- **Drag** a line to move it. It moves as itself, and snaps its left edge, centre, right edge, top, bottom
+  or baseline to those of the nearest lines, images and annotations, and to the edges and centre of the
+  page; pink guides show what it lines up with (`Alt` moves freely). Arrow keys nudge. `Delete` removes it. `Shift`-click or drag a box to select several lines.
 - **Drop** a line at the end or the start of another line and the two **join into one line**: the target
   is outlined while you drag, and each word keeps its own font, size and colour. Hold `Alt` to place a
   line next to another without joining (*Settings › Join lines dropped next to each other*).
@@ -91,7 +92,11 @@ delete it in the inspector. **Insert image** (`I`) places a PNG or JPEG.
 
 Highlight (`M`), underline (`U`) and strike out (`K`) by dragging across text. Sticky note (`N`), drawing
 (`D`), rectangle, ellipse, line, arrow, polygon, text box (`B`), stamp (`S`) and links (`L`) work by clicking
-or dragging on the page. With the Select tool, click one to change it in the inspector or drag it to move it.
+or dragging on the page. With the Select tool, click one to change it in the inspector or drag it to move it; it snaps like text
+does. Text boxes, rectangles, ellipses and stamps also have a handle at their corner to resize them. A text
+box wraps its text to the new size while you drag, and the inspector sets its font size, where the text
+sits across (left, centre, right) and down (top, middle, bottom), and *Fit text to box* picks the largest
+size that fits. Images (edit tool) snap the same way when moved or resized.
 
 ## Forms
 

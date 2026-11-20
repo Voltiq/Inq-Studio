@@ -62,8 +62,10 @@ Choisissez **Modifier le texte et les images** (`E`). Chaque ligne reçoit un co
 
 - **Double-cliquez** sur une ligne pour la réécrire. Si la ligne fait partie d’un paragraphe, le paragraphe
   entier s’ouvre et il est remis en lignes dans sa colonne lorsque vous validez avec `Ctrl+Entrée`.
-- **Faites glisser** une ligne pour la déplacer ; elle s’aligne sur les bords et les lignes de base des
-  autres lignes (`Alt` déplace librement). Les flèches déplacent finement. `Suppr` la supprime. `Maj`+clic
+- **Faites glisser** une ligne pour la déplacer. Elle se déplace telle quelle et aligne son bord gauche,
+  son centre, son bord droit, son haut, son bas ou sa ligne de base sur ceux des lignes, images et
+  annotations les plus proches, ainsi que sur les bords et le centre de la page ; des repères roses montrent
+  avec quoi elle s’aligne (`Alt` déplace librement). Les flèches déplacent finement. `Suppr` la supprime. `Maj`+clic
   ou tracez un cadre pour sélectionner plusieurs lignes.
 - **Déposez** une ligne à la fin ou au début d’une autre : les deux **se joignent en une seule ligne**. La
   ligne cible est encadrée pendant le glissement, et chaque mot garde sa police, sa taille et sa couleur.
@@ -108,7 +110,13 @@ l’inspecteur. **Insérer une image** (`I`) place un PNG ou un JPEG.
 Surlignez (`M`), soulignez (`U`) et barrez (`K`) en faisant glisser sur le texte. La note (`N`), le dessin
 (`D`), le rectangle, l’ellipse, la ligne, la flèche, le polygone, la zone de texte (`B`), le tampon (`S`) et
 les liens (`L`) fonctionnent en cliquant ou en faisant glisser sur la page. Avec l’outil Sélectionner,
-cliquez sur l’un d’eux pour le modifier dans l’inspecteur, ou faites-le glisser pour le déplacer.
+cliquez sur l’un d’eux pour le modifier dans l’inspecteur, ou faites-le glisser pour le déplacer ; il
+s’aligne comme le texte. Les zones de texte, rectangles, ellipses et tampons ont aussi une poignée dans le
+coin pour les redimensionner. Une zone de texte remet son texte en lignes à la nouvelle taille pendant le
+glissement, et l’inspecteur règle la taille de la police, la position du texte à l’horizontale (gauche,
+centre, droite) et à la verticale (haut, milieu, bas), et *Ajuster le texte à la zone* choisit la plus grande
+taille qui tient. Les images (outil de modification) s’alignent de la même façon quand on les déplace ou
+les redimensionne.
 
 ## Formulaires
 

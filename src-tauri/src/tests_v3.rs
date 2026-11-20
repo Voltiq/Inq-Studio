@@ -452,3 +452,44 @@ impl WithKind for NewAnnot {
         self
     }
 }
+
+#[test]
+fn text_boxes_resize_align_and_fit() {
+    let mut doc = base(1);
+    let pid = first_page(&doc);
+    annots::add(&mut doc, pid, &NewAnnot { rect: Some([100.0, 500.0, 300.0, 560.0]), contents: "Short note".into(), size: Some(12.0), ..ann("textbox") }).unwrap();
+    let index = annots::list(&doc, pid).iter().find(|a| a.subtype == "FreeText").unwrap().index;
+    // Wider, centred across and down.
+    let change = annots::AnnotChange { rect: Some([100.0, 400.0, 400.0, 560.0]), align: Some("center".into()), valign: Some("middle".into()), ..Default::default() };
+    annots::update(&mut doc, pid, index, &change).unwrap();
+    let a = annots::list(&doc, pid).into_iter().find(|a| a.index == index).unwrap();
+    assert_eq!(a.rect, [100.0, 400.0, 400.0, 560.0]);
+    assert_eq!((a.align.as_str(), a.valign.as_str(), a.size), ("center", "middle", Some(12.0)));
+    // The appearance puts the text in the middle of the box.
+    let ap = appearance_text(&doc, pid, index);
+    let tm: Vec<f32> = ap.split("Tm").next().unwrap().split_whitespace().rev().take(2).filter_map(|v| v.parse().ok()).collect();
+    let (y, x) = (tm[0], tm[1]);
+    assert!(x > 200.0 && x < 240.0, "centred across: {x}");
+    assert!((y - 476.0).abs() < 4.0, "centred down: {y}");
+    // Fitting makes the size as large as the box allows.
+    annots::update(&mut doc, pid, index, &annots::AnnotChange { fit: true, ..Default::default() }).unwrap();
+    let a = annots::list(&doc, pid).into_iter().find(|a| a.index == index).unwrap();
+    let size = a.size.unwrap();
+    assert!(size > 30.0 && size <= 72.0, "{size}");
+    assert!(annots::fitting_size("Short note", 300.0, 160.0) == size);
+    assert!(annots::update(&mut doc, pid, index, &annots::AnnotChange { rect: Some([0.0, 0.0, 2.0, 2.0]), ..Default::default() }).is_err());
+}
+
+/// The decoded normal appearance stream of an annotation.
+fn appearance_text(doc: &Document, pid: lopdf::ObjectId, index: usize) -> String {
+    let annots = doc.get_dictionary(pid).unwrap().get(b"Annots").unwrap().clone();
+    let arr = match annots {
+        lopdf::Object::Reference(r) => doc.get_object(r).unwrap().as_array().unwrap().clone(),
+        lopdf::Object::Array(a) => a,
+        _ => panic!(),
+    };
+    let d = doc.get_dictionary(arr[index].as_reference().unwrap()).unwrap();
+    let ap = d.get(b"AP").unwrap().as_dict().unwrap().get(b"N").unwrap().as_reference().unwrap();
+    let st = doc.get_object(ap).unwrap().as_stream().unwrap();
+    String::from_utf8_lossy(&st.decompressed_content().unwrap_or_else(|_| st.content.clone())).to_string()
+}
