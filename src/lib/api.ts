@@ -184,6 +184,8 @@ export interface LineEdit {
   ink?: [number, number, number];
   /** For recognised text: the letters looked bold, so the new text is set bold. */
   bold?: boolean;
+  /** For recognised text, line by line: background, ink, weight and the repaired background. */
+  looks?: ({ line: number } & import("./pageColours").LineLook)[];
   /** Wrap the rest of the paragraph again after a rewrite; move lines up after a delete. */
   reflow?: boolean;
 }
@@ -454,12 +456,16 @@ export interface OcrWord {
 
 export interface OcrLine {
   words: OcrWord[];
+  /** For drawing the line sharply: its ink, weight and repaired background. */
+  look?: { ink?: [number, number, number]; bold?: boolean; patch?: import("./pageColours").Patch };
 }
 
 export interface OcrPage {
   page: number;
   transform: number[];
   lines: OcrLine[];
+  /** Draw the recognised text sharply instead of invisibly. */
+  sharp?: boolean;
 }
 
 export interface SigInfo {

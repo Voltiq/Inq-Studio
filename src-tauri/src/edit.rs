@@ -41,10 +41,52 @@ pub struct LineEdit {
     pub ink: Option<[f32; 3]>,
     /// The recognised letters looked bold.
     pub bold: bool,
+    /// For recognised lines, line by line: their own background, ink, weight and repaired background.
+    pub looks: Vec<LineLook>,
     /// Keep the paragraph around the line in shape: a rewritten line is
     /// wrapped again together with the rest of its paragraph, and the lines
     /// below a deleted line move up.
     pub reflow: bool,
+}
+
+/// The background behind a line of a scan or picture with its letters painted
+/// out, as the window repaired it from the pixels around them: a PNG, and
+/// where it goes on the page (bottom-left, bottom-right and top-left corners
+/// in user space).
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Patch {
+    pub png: String,
+    pub corners: [[f32; 2]; 3],
+}
+
+/// How one recognised line looks on the page.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LineLook {
+    pub line: usize,
+    pub cover: Option<[f32; 3]>,
+    pub ink: Option<[f32; 3]>,
+    pub bold: bool,
+    pub patch: Option<Patch>,
+}
+
+/// Draws a repaired background on the page, over what is there.
+pub fn draw_patch(doc: &mut Document, page_id: ObjectId, p: &Patch) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(p.png.trim_start_matches("data:image/png;base64,")).map_err(|_| "The repaired background could not be read.".to_string())?;
+    let img = image::load_from_memory(&bytes).map_err(|_| "The repaired background could not be read.".to_string())?.to_rgba8();
+    let id = crate::images::object_from_rgba(doc, &img);
+    let name = add_resource(doc, page_id, Src::Page, "XObject", id, "InqBg")?;
+    let [bl, br, tl] = p.corners;
+    let m = [br[0] - bl[0], br[1] - bl[1], tl[0] - bl[0], tl[1] - bl[1], bl[0], bl[1]];
+    let ops = vec![
+        Operation::new("q", vec![]),
+        Operation::new("cm", m.iter().map(|v| real(*v)).collect()),
+        Operation::new("Do", vec![Object::Name(name)]),
+        Operation::new("Q", vec![]),
+    ];
+    add_page_ops(doc, page_id, ops, false)
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -1517,10 +1559,21 @@ pub struct HiddenWord {
 /// width it was recognised with, so a selection covers the scanned word.
 /// Returns how many words were placed, and notices about fonts.
 pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[HiddenWord], font: &FontChoice) -> Result<(usize, Vec<String>), String> {
+    place_words(doc, page_id, words, font, None)
+}
+
+/// Places words each stretched to its measured width: invisibly (`ink` None,
+/// for searching and copying), or drawn in `ink`.
+pub fn place_words(doc: &mut Document, page_id: ObjectId, words: &[HiddenWord], font: &FontChoice, ink: Option<[f32; 3]>) -> Result<(usize, Vec<String>), String> {
     let target = Target::Choice(font.clone());
     let mut enc = Encoder::new(page_id);
-    let mut ops = vec![Operation::new("q", vec![]), Operation::new("BT", vec![]), Operation::new("Tr", vec![Object::Integer(3)])];
-    let mut state = (Vec::new(), -1.0f32, Fill::Gray(0.0));
+    let mode = if ink.is_some() { 0 } else { 3 };
+    let fill = match ink {
+        Some([r, g, b]) => Fill::Rgb(r, g, b),
+        None => Fill::Gray(0.0),
+    };
+    let mut ops = vec![Operation::new("q", vec![]), Operation::new("BT", vec![]), Operation::new("Tr", vec![Object::Integer(mode)])];
+    let mut state = (Vec::new(), -1.0f32, Fill::Gray(-1.0));
     let mut placed = 0;
     for w in words {
         let chars: Vec<char> = w.text.chars().filter(|c| !c.is_control()).collect();
@@ -1534,7 +1587,7 @@ pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[Hidden
             continue;
         }
         let stretch = (w.width / natural * 100.0).clamp(5.0, 2000.0);
-        let looks = [Look { size: w.size, fill: Fill::Gray(0.0), tc: 0.0 }];
+        let looks = [Look { size: w.size, fill: fill.clone(), tc: 0.0 }];
         ops.push(Operation::new("Tz", vec![real(stretch)]));
         ops.push(Operation::new("Tm", vec![real(w.dir.0), real(w.dir.1), real(w.up.0), real(w.up.1), real(w.origin.0), real(w.origin.1)]));
         shows(&items, &looks, &mut state, false, &mut ops);
@@ -1563,10 +1616,10 @@ fn helv_width(text: &str, bold: bool) -> f32 {
 fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::Scan, ids: &[usize], hidden: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
     let cover = edit.cover.unwrap_or([1.0, 1.0, 1.0]);
     let ink = edit.ink.unwrap_or([0.0, 0.0, 0.0]);
-    let lines: Vec<([[f32; 2]; 4], [f32; 2], f32, f32, String, f32)> = hidden
+    let lines: Vec<(usize, [[f32; 2]; 4], [f32; 2], f32, f32, String, f32)> = hidden
         .iter()
         .filter_map(|id| scan.lines.get(*id))
-        .map(|l| (l.quad, l.origin, l.angle, l.em, l.text.clone(), l.chars.last().copied().unwrap_or(0.0)))
+        .map(|l| (l.id, l.quad, l.origin, l.angle, l.em, l.text.clone(), l.chars.last().copied().unwrap_or(0.0)))
         .collect();
     // The invisible words go (the visible ones replace them for searching and copying too);
     // the other lines take the edit.
@@ -1578,7 +1631,17 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
     }
     let mut notices = enc.finish(doc)?;
     plan.apply(doc, page_id, scan)?;
-    for (quad, origin, angle, em, old, old_width) in lines {
+    for (id, quad, origin, angle, em, old, old_width) in lines {
+        let look = edit.looks.iter().find(|l| l.line == id);
+        let cover = look.and_then(|l| l.cover).unwrap_or(cover);
+        let ink = look.and_then(|l| l.ink).unwrap_or(ink);
+        let bold = look.map(|l| l.bold).unwrap_or(edit.bold);
+        // The background with the letters painted out, where the window could repair it;
+        // otherwise the colour around the letters.
+        let patched = match look.and_then(|l| l.patch.as_ref()) {
+            Some(p) => draw_patch(doc, page_id, p).is_ok(),
+            None => false,
+        };
         // A little more than the line's box, so no edge of the old letters shows.
         let centre = [(quad[0][0] + quad[2][0]) / 2.0, (quad[0][1] + quad[2][1]) / 2.0];
         let grown: Vec<[f32; 2]> = quad
@@ -1589,24 +1652,26 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
                 [p[0] + dx / d * 0.12 * em, p[1] + dy / d * 0.12 * em]
             })
             .collect();
-        let mut ops = vec![Operation::new("q", vec![]), Operation::new("rg", cover.iter().map(|v| real(*v)).collect())];
-        for (i, p) in grown.iter().enumerate() {
-            ops.push(Operation::new(if i == 0 { "m" } else { "l" }, vec![real(p[0]), real(p[1])]));
+        if !patched {
+            let mut ops = vec![Operation::new("q", vec![]), Operation::new("rg", cover.iter().map(|v| real(*v)).collect())];
+            for (i, p) in grown.iter().enumerate() {
+                ops.push(Operation::new(if i == 0 { "m" } else { "l" }, vec![real(p[0]), real(p[1])]));
+            }
+            ops.push(Operation::new("h", vec![]));
+            ops.push(Operation::new("f", vec![]));
+            ops.push(Operation::new("Q", vec![]));
+            add_page_ops(doc, page_id, ops, false)?;
         }
-        ops.push(Operation::new("h", vec![]));
-        ops.push(Operation::new("f", vec![]));
-        ops.push(Operation::new("Q", vec![]));
-        add_page_ops(doc, page_id, ops, false)?;
         if edit.delete {
             continue;
         }
-        let natural = helv_width(&old, edit.bold) * em;
+        let natural = helv_width(&old, bold) * em;
         let text = edit.text.clone().unwrap_or(old);
         if text.trim().is_empty() {
             continue;
         }
         let plain = text.chars().all(|c| crate::encoding::win_ansi_byte(c).is_some());
-        let font = match (plain, edit.bold) {
+        let font = match (plain, bold) {
             (true, false) => FontChoice::Standard { name: "Helvetica".into() },
             (true, true) => FontChoice::Standard { name: "Helvetica-Bold".into() },
             (false, bold) => FontChoice::System { family: "Arial".into(), bold, italic: false },

@@ -25,6 +25,18 @@ pub struct OcrWord {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OcrLine {
     pub words: Vec<OcrWord>,
+    /// For drawing the line sharply: its ink, weight and repaired background.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<OcrLook>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OcrLook {
+    pub ink: Option<[f32; 3]>,
+    pub bold: bool,
+    #[serde(skip_serializing)]
+    pub patch: Option<crate::edit::Patch>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -53,6 +65,9 @@ pub struct OcrPage {
     /// Maps user space to image pixels (pdf.js `viewport.transform`).
     pub transform: [f32; 6],
     pub lines: Vec<OcrLine>,
+    /// Draw the recognised text sharply over its repaired background, instead of invisibly over the picture.
+    #[serde(default)]
+    pub sharp: bool,
 }
 
 #[cfg(windows)]
@@ -124,7 +139,7 @@ mod engine {
                 words.push(OcrWord { text, x: r.X, y: r.Y, w: r.Width, h: r.Height });
             }
             if !words.is_empty() {
-                lines.push(OcrLine { words });
+                lines.push(OcrLine { words, look: None });
             }
         }
         let angle = result.TextAngle().ok().and_then(|a| a.Value().ok());
@@ -237,7 +252,7 @@ mod tests {
     use super::*;
 
     fn page(text: &str) -> Recognised {
-        Recognised { lines: vec![OcrLine { words: text.split(' ').map(|w| OcrWord { text: w.into(), x: 0.0, y: 0.0, w: 1.0, h: 1.0 }).collect() }], angle: None, language: None }
+        Recognised { lines: vec![OcrLine { look: None, words: text.split(' ').map(|w| OcrWord { text: w.into(), x: 0.0, y: 0.0, w: 1.0, h: 1.0 }).collect() }], angle: None, language: None }
     }
 
     #[test]
@@ -254,6 +269,15 @@ mod tests {
 /// The font the invisible layer is written in: a standard font when every
 /// character is in its encoding (nothing is embedded then), otherwise an
 /// installed font that covers the script.
+/// The bold face of a layer font.
+fn bolder(f: &FontChoice) -> FontChoice {
+    match f {
+        FontChoice::Standard { name } if name == "Helvetica" => FontChoice::Standard { name: "Helvetica-Bold".into() },
+        FontChoice::System { family, italic, .. } => FontChoice::System { family: family.clone(), bold: true, italic: *italic },
+        other => other.clone(),
+    }
+}
+
 fn layer_font(lines: &[OcrLine], lang: &str) -> FontChoice {
     let plain = lines.iter().flat_map(|l| &l.words).flat_map(|w| w.text.chars()).all(|c| crate::encoding::win_ansi_byte(c).is_some());
     if plain {
@@ -301,6 +325,8 @@ pub fn add_text_layer(doc: &mut Document, page_id: ObjectId, page: &OcrPage, lan
     let dir = (dx.0 / sx, dx.1 / sx);
     let up = (dy.0 / sy, dy.1 / sy);
     let mut words = Vec::new();
+    let font = layer_font(&page.lines, lang);
+    let (mut placed, mut notices) = (0, Vec::new());
     for line in &page.lines {
         let top = line.words.iter().map(|w| w.y).fold(f32::MAX, f32::min);
         let bottom = line.words.iter().map(|w| w.y + w.h).fold(f32::MIN, f32::max);
@@ -310,9 +336,26 @@ pub fn add_text_layer(doc: &mut Document, page_id: ObjectId, page: &OcrPage, lan
         let (em, below) = em_of_box(line.words.iter().map(|w| w.text.as_str()), height);
         let baseline = bottom - below;
         let size = em * sy;
-        for w in &line.words {
-            words.push(HiddenWord { text: w.text.clone(), origin: apply(&inv, w.x, baseline), dir, up, size, width: w.w * sx });
+        let these: Vec<HiddenWord> = line.words.iter().map(|w| HiddenWord { text: w.text.clone(), origin: apply(&inv, w.x, baseline), dir, up, size, width: w.w * sx }).collect();
+        match (&line.look, page.sharp) {
+            // Sharp: the letters in the picture are painted out and drawn again as text, in their colour.
+            (Some(look), true) => {
+                if let Some(p) = &look.patch {
+                    crate::edit::draw_patch(doc, page_id, p)?;
+                }
+                let face = if look.bold { bolder(&font) } else { font.clone() };
+                let (n, more) = crate::edit::place_words(doc, page_id, &these, &face, Some(look.ink.unwrap_or([0.0; 3])))?;
+                placed += n;
+                notices.extend(more);
+            }
+            _ => words.extend(these),
         }
     }
-    place_hidden_words(doc, page_id, &words, &layer_font(&page.lines, lang))
+    if !words.is_empty() {
+        let (n, more) = place_hidden_words(doc, page_id, &words, &font)?;
+        placed += n;
+        notices.extend(more);
+    }
+    notices.dedup();
+    Ok((placed, notices))
 }

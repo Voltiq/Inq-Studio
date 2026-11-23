@@ -126,6 +126,9 @@ invisibly over the scan, so it can be searched, selected and copied; the picture
 Recognition runs on your computer with the OCR languages installed in Windows. These are Windows language
 packs and have nothing to do with the language of Inq Studio's interface.
 
+- **Draw recognised text sharply** paints the words out of the picture and draws them again as real text in
+  their colour and weight, so they stay sharp at any zoom. Recognition mistakes then show on the page, so
+  check the result. The setting is remembered.
 - **Recognise text in pictures too** also reads lettering in images and drawings on pages that already have
   text: screenshots, photos, illustrations (where lettering is often drawn as shapes), scanned stamps. Only
   words that are not text yet are added, not the page's own text again. They can be searched, copied and rewritten like text on a scan.

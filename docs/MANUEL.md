@@ -149,6 +149,9 @@ reste telle quelle.
 La reconnaissance s’effectue sur votre ordinateur avec les langues OCR installées dans Windows. Ce sont des
 modules linguistiques de Windows, sans rapport avec la langue de l’interface d’Inq Studio.
 
+- **Redessiner le texte reconnu net** efface les mots de l’image et les redessine en vrai texte dans leur
+  couleur et leur graisse, pour qu’ils restent nets à tout zoom. Les erreurs de reconnaissance se voient
+  alors sur la page ; vérifiez le résultat. Le réglage est mémorisé.
 - **Reconnaître aussi le texte des images** lit aussi le lettrage des images et des dessins sur les
   pages qui contiennent déjà du texte : captures d’écran, photos, illustrations (où le lettrage est souvent
   dessiné sous forme de tracés), tampons numérisés. Seuls les mots qui ne sont pas encore du texte sont

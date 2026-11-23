@@ -147,3 +147,29 @@ describe("look of a line", () => {
     expect(look.ink?.map((c) => Math.round(c * 255))).toEqual([20, 20, 20]);
   });
 });
+
+describe("painting letters out", () => {
+  it("leaves a gradient where the letters were", async () => {
+    const { paintOutLetters } = await import("./inpaint");
+    const w = 60;
+    const h = 20;
+    const data = new Uint8ClampedArray(w * h * 4);
+    const back = (x: number) => [40 + x * 3, 90, 220 - x * 2];
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        // White letters: upright strokes in the middle of the box.
+        const letter = y >= 5 && y < 15 && x >= 10 && x < 50 && x % 6 < 3;
+        data.set(letter ? [255, 255, 255, 255] : [...back(x), 255], (y * w + x) * 4);
+      }
+    expect(paintOutLetters(data, w, h, [255, 255, 255])).toBeGreaterThan(50);
+    // Every pixel is now close to the gradient behind it.
+    let worst = 0;
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const b = back(x);
+        worst = Math.max(worst, Math.abs(data[i] - b[0]), Math.abs(data[i + 1] - b[1]), Math.abs(data[i + 2] - b[2]));
+      }
+    expect(worst).toBeLessThan(8);
+  });
+});

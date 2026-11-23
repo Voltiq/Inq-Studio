@@ -532,9 +532,13 @@ export default function App() {
       editLines: async (page, lines, revision, edit) => {
         if (id == null) return false;
         // Rewriting, moving or deleting recognised text: the old words are pixels, so measure the background, ink and weight they have on screen.
-        const first = selectionRef.current?.kind === "lines" ? selectionRef.current.lines.find((l) => l.id === lines[0]) : undefined;
+        const picked = selectionRef.current?.kind === "lines" ? selectionRef.current.lines.filter((l) => lines.includes(l.id) && l.invisible) : [];
         const changesLook = edit.text != null || edit.delete || !!edit.dx || !!edit.dy;
-        if (changesLook && !edit.cover && first?.invisible) edit = { ...edit, ...lookOfLine(id, page, first.quad, first.em) };
+        if (changesLook && !edit.looks && picked.length) {
+          // Each line its own background (painted out of the picture), ink and weight.
+          const looks = picked.map((l) => ({ line: l.id, ...lookOfLine(id, page, l.quad, l.em) }));
+          edit = { cover: looks[0].cover, ink: looks[0].ink, bold: looks[0].bold, ...edit, looks };
+        }
         // Rewriting or deleting a line keeps its paragraph in shape, when that is switched on.
         const whole = settingsRef.current.reflow && (edit.text != null || edit.delete) ? { ...edit, reflow: true } : edit;
         const ok = await run(id, () => api.editLines(id, page, revision, lines, whole));

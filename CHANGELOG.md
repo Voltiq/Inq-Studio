@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.0 — 2026-11-23
+
+### Added
+- **Sharp recognised text**: *Recognise text (OCR)* can draw what it reads as real text: the words are
+  painted out of the picture and drawn again in their colour, weight and width, so they stay sharp at any
+  zoom. Off by default, because recognition mistakes then show on the page; the choice is remembered.
+
+### Fixed
+- **Moving recognised text on gradients**: the spot a line left was filled with one flat colour, which
+  showed as a block with hard edges on gradients and photos. Now only the letters are painted out of the
+  background, blended from the pixels around them, so the background carries through. Several lines moved
+  together each keep their own background, colour and weight.
+
 ## 1.7.2 — 2026-11-23
 
 ### Fixed

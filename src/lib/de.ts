@@ -478,6 +478,8 @@ export const de: Record<string, string> = {
   "Language of the text": "Sprache des Textes",
   "Languages come from the OCR packs installed in Windows; recognition runs on this computer.": "Die Sprachen stammen aus den in Windows installierten OCR-Paketen; die Erkennung läuft auf diesem Computer.",
   "Skip pages that already have text": "Seiten mit vorhandenem Text überspringen",
+  "Draw recognised text sharply": "Erkannten Text scharf zeichnen",
+  "The words are painted out of the picture and drawn again as real text in their colour, so they stay sharp at any zoom. Recognition mistakes then show on the page, so check the result.": "Die Wörter werden aus dem Bild entfernt und als echter Text in ihrer Farbe neu gezeichnet, sodass sie in jeder Vergrößerung scharf bleiben. Erkennungsfehler sind dann auf der Seite zu sehen; prüfen Sie das Ergebnis.",
   "Recognise text in pictures too": "Auch Text in Bildern erkennen",
   "On pages that already have text, lettering in images and drawings — screenshots, photos, illustrations, scanned stamps — is recognised as well. Like text on a scan, it can then be searched, copied and rewritten with the edit tool.":
     "Auf Seiten, die schon Text haben, wird auch Schrift in Bildern und Zeichnungen erkannt — Bildschirmfotos, Fotos, Illustrationen, eingescannte Stempel. Wie Text auf einem Scan lässt sie sich dann durchsuchen, kopieren und mit dem Bearbeiten-Werkzeug neu schreiben.",

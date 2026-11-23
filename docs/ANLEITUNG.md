@@ -137,6 +137,9 @@ selbst entfernt. Nach dem Speichern lassen sie sich nicht zurückholen.
 Die Erkennung läuft auf Ihrem Computer mit den in Windows installierten OCR-Sprachen. Das sind
 Windows-Sprachpakete; mit der Sprache der Oberfläche von Inq Studio haben sie nichts zu tun.
 
+- **Erkannten Text scharf zeichnen** entfernt die Wörter aus dem Bild und zeichnet sie als echten Text in
+  ihrer Farbe und Stärke neu, sodass sie in jeder Vergrößerung scharf bleiben. Erkennungsfehler sind dann
+  auf der Seite zu sehen; prüfen Sie das Ergebnis. Die Einstellung wird gespeichert.
 - **Auch Text in Bildern erkennen** liest auf Seiten, die schon Text haben, auch Schrift in Bildern und
   Zeichnungen: Bildschirmfotos, Fotos, Illustrationen (dort ist Schrift oft als Formen gezeichnet),
   eingescannte Stempel. Hinzu kommen nur Wörter, die noch kein Text sind, nicht noch einmal der Text der

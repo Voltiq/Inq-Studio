@@ -5,14 +5,59 @@
  * background in the same colour, from the inline editor and the inspector alike.
  */
 
-import type { Quad } from "./api";
+import type { Point, Quad } from "./api";
+import { paintOutLetters } from "./inpaint";
 import type { PageViewport } from "./pdf";
 
 export type RGB = [number, number, number];
+export interface Patch {
+  /** PNG, base64. */
+  png: string;
+  /** Bottom-left, bottom-right and top-left corners in user space. */
+  corners: [Point, Point, Point];
+}
+
 export interface LineLook {
   cover?: RGB;
   ink?: RGB;
   bold?: boolean;
+  /** The background with the letters painted out. */
+  patch?: Patch;
+}
+
+/**
+ * The look of the line in a box of canvas pixels, with its background
+ * repaired: the letters painted out of a slightly larger box, as a PNG placed
+ * where that box is on the page. `toPdf` turns canvas pixels into user space.
+ */
+export function lookWithPatch(canvas: HTMLCanvasElement, box: { x0: number; y0: number; x1: number; y1: number }, emPx: number, toPdf: (x: number, y: number) => Point): LineLook {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
+  const x0 = clamp(Math.floor(box.x0), canvas.width);
+  const y0 = clamp(Math.floor(box.y0), canvas.height);
+  const x1 = clamp(Math.ceil(box.x1), canvas.width);
+  const y1 = clamp(Math.ceil(box.y1), canvas.height);
+  if (!ctx || x1 - x0 < 2 || y1 - y0 < 2) return {};
+  const look = lookOfPixels(ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data, x1 - x0, y1 - y0, emPx);
+  if (!look.ink) return look;
+  // A little more than the line, so the edges of the patch are background on every side.
+  const m = Math.max(3, Math.round(0.15 * emPx));
+  const [px0, py0, px1, py1] = [clamp(x0 - m, canvas.width), clamp(y0 - m, canvas.height), clamp(x1 + m, canvas.width), clamp(y1 + m, canvas.height)];
+  const w = px1 - px0;
+  const h = py1 - py0;
+  try {
+    const img = ctx.getImageData(px0, py0, w, h);
+    paintOutLetters(img.data, w, h, look.ink.map((c) => c * 255) as RGB);
+    const out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    out.getContext("2d")?.putImageData(img, 0, 0);
+    const png = out.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
+    look.patch = { png, corners: [toPdf(px0, py1), toPdf(px1, py1), toPdf(px0, py0)] };
+  } catch {
+    // Without a patch the engine covers the line in one colour.
+  }
+  return look;
 }
 
 type Px = [number, number, number, number];
@@ -67,14 +112,13 @@ export function lookOfPixels(data: Uint8ClampedArray, width: number, height: num
 export function lookOnCanvas(canvas: HTMLCanvasElement, vp: PageViewport, q: Quad, em: number): LineLook {
   const k = canvas.width / vp.width;
   const pts = q.map((p) => vp.convertToViewportPoint(p[0], p[1]) as number[]);
-  const x0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[0])) * k));
-  const y0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[1])) * k));
-  const x1 = Math.min(canvas.width, Math.ceil(Math.max(...pts.map((p) => p[0])) * k));
-  const y1 = Math.min(canvas.height, Math.ceil(Math.max(...pts.map((p) => p[1])) * k));
-  const ctx = canvas.getContext("2d");
-  if (!ctx || x1 - x0 < 2 || y1 - y0 < 2) return {};
-  const { data } = ctx.getImageData(x0, y0, x1 - x0, y1 - y0);
-  return lookOfPixels(data, x1 - x0, y1 - y0, em * vp.scale * k);
+  const box = {
+    x0: Math.min(...pts.map((p) => p[0])) * k,
+    y0: Math.min(...pts.map((p) => p[1])) * k,
+    x1: Math.max(...pts.map((p) => p[0])) * k,
+    y1: Math.max(...pts.map((p) => p[1])) * k,
+  };
+  return lookWithPatch(canvas, box, em * vp.scale * k, (x, y) => vp.convertToPdfPoint(x / k, y / k) as Point);
 }
 
 /** Each page on screen answers for the lines drawn on it. */

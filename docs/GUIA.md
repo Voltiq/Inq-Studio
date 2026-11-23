@@ -141,6 +141,9 @@ queda como está.
 El reconocimiento se hace en su equipo con los idiomas de OCR instalados en Windows. Son paquetes de idioma
 de Windows y no tienen nada que ver con el idioma de la interfaz de Inq Studio.
 
+- **Dibujar el texto reconocido nítido** borra las palabras de la imagen y las dibuja de nuevo como texto
+  real en su color y grosor, para que se vean nítidas con cualquier zoom. Los errores de reconocimiento se
+  verán entonces en la página; revise el resultado. El ajuste se recuerda.
 - **Reconocer también el texto de las imágenes** lee además las letras de las imágenes y los dibujos
   en las páginas que ya tienen texto: capturas de pantalla, fotos, ilustraciones (donde las letras suelen
   estar dibujadas como formas), sellos escaneados. Solo se añaden las palabras que aún no son texto, no

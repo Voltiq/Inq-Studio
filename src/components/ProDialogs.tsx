@@ -32,6 +32,7 @@ import {
 import type { PDFDocumentProxy } from "../lib/pdf";
 import { grayPixels, renderPage } from "../lib/raster";
 import { boxOf, wordsOffText } from "../lib/ocrPictures";
+import { lookWithPatch } from "../lib/pageColours";
 import { bytes, plural } from "../lib/format";
 import { cx } from "../lib/utils";
 import { t, te } from "../lib/i18n";
@@ -445,6 +446,22 @@ export function OcrDialog({
   const [skip, setSkip] = useState(true);
   /** Also read the text inside images on pages that already have text. */
   const [pictures, setPictures] = useState(false);
+  /** Draw what is recognised as sharp text, painted out of the picture. Remembered. */
+  const [sharp, setSharpState] = useState(() => {
+    try {
+      return localStorage.getItem("inq.ocrSharp") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setSharp = (v: boolean) => {
+    setSharpState(v);
+    try {
+      localStorage.setItem("inq.ocrSharp", v ? "1" : "0");
+    } catch {
+      // Not remembered.
+    }
+  };
   const [progress, setProgress] = useState<{ done: number; total: number; words: number } | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
   const [cancel] = useState({ now: false });
@@ -505,7 +522,20 @@ export function OcrDialog({
         const toPixels = (x: number, y: number) => vp.convertToViewportPoint(x, y) as number[];
         const kept = taken ? wordsOffText(found.lines, taken.map((q) => boxOf(q, toPixels))) : found.lines;
         if (kept.length) {
-          out.push({ page: list[i], transform: vp.transform, lines: kept });
+          // Sharp: each line's ink, weight and background (letters painted out) from this 300 ppi picture.
+          const lines = sharp
+            ? kept.map((l) => {
+                const box = {
+                  x0: Math.min(...l.words.map((w) => w.x)),
+                  y0: Math.min(...l.words.map((w) => w.y)),
+                  x1: Math.max(...l.words.map((w) => w.x + w.w)),
+                  y1: Math.max(...l.words.map((w) => w.y + w.h)),
+                };
+                const look = lookWithPatch(canvas, box, (box.y1 - box.y0) / 0.93, (x, y) => vp.convertToPdfPoint(x, y) as [number, number]);
+                return look.ink ? { ...l, look: { ink: look.ink, bold: look.bold, patch: look.patch } } : l;
+              })
+            : kept;
+          out.push({ page: list[i], transform: vp.transform, lines, sharp });
           words += kept.reduce((n, l) => n + l.words.length, 0);
         } else if (taken) {
           skipped++;
@@ -562,6 +592,12 @@ export function OcrDialog({
             <Select label={t("Language of the text")} value={lang} onChange={setLang} options={[...(setup.languages.length > 1 ? [{ value: "auto", label: t("Detect automatically") }] : []), ...setup.languages.map((l) => ({ value: l.tag, label: l.name }))]} helper={detected ? t("Detected: {0}", detected) : t("Languages come from the OCR packs installed in Windows; recognition runs on this computer.")} />
             <ScopePicker scope={scope} onScope={setScope} range={range} onRange={setRange} selected={selected.length} />
             <Toggle label={t("Skip pages that already have text")} checked={skip} onChange={setSkip} />
+            <Toggle
+              label={t("Draw recognised text sharply")}
+              description={t("The words are painted out of the picture and drawn again as real text in their colour, so they stay sharp at any zoom. Recognition mistakes then show on the page, so check the result.")}
+              checked={sharp}
+              onChange={setSharp}
+            />
             {skip && (
               <Toggle
                 label={t("Recognise text in pictures too")}

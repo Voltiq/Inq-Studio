@@ -444,10 +444,10 @@ fn lays_recognised_words_over_the_page() {
     let mut doc = doc_with(&[&[]]);
     let pid = pages::page_id(&doc, 0).unwrap();
     // A page image at 2 pixels per point: the transform flips y and scales by 2.
-    let page = ocr::OcrPage {
+    let page = ocr::OcrPage { sharp: false,
         page: 0,
         transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0],
-        lines: vec![ocr::OcrLine {
+        lines: vec![ocr::OcrLine { look: None,
             words: vec![
                 ocr::OcrWord { text: "Scanned".into(), x: 200.0, y: 300.0, w: 180.0, h: 40.0 },
                 ocr::OcrWord { text: "words".into(), x: 400.0, y: 310.0, w: 120.0, h: 30.0 },
@@ -470,7 +470,7 @@ fn lays_recognised_words_over_the_page() {
     assert!((l.origin[1] - (842.0 - 340.0 / 2.0)).abs() < 0.6, "{:?}", l.origin);
     assert!((l.origin[0] + l.chars.last().unwrap() - 260.0).abs() < 1.0, "{:?}", l.chars);
     // Text other scripts need comes from an installed font.
-    let cjk = ocr::OcrPage { page: 0, transform: page.transform, lines: vec![ocr::OcrLine { words: vec![ocr::OcrWord { text: "Grüße".into(), x: 10.0, y: 10.0, w: 50.0, h: 20.0 }] }] };
+    let cjk = ocr::OcrPage { sharp: false, page: 0, transform: page.transform, lines: vec![ocr::OcrLine { look: None, words: vec![ocr::OcrWord { text: "Grüße".into(), x: 10.0, y: 10.0, w: 50.0, h: 20.0 }] }] };
     assert_eq!(ocr::add_text_layer(&mut doc, pid, &cjk, "de").unwrap().0, 1);
 }
 
@@ -669,7 +669,7 @@ fn rewriting_recognised_text_changes_what_the_scan_shows() {
     let mut doc = doc_with(&[&[]]);
     let pid = pages::page_id(&doc, 0).unwrap();
     let word = |text: &str, x: f32| ocr::OcrWord { text: text.into(), x, y: 300.0, w: 150.0, h: 40.0 };
-    let page = ocr::OcrPage { page: 0, transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0], lines: vec![ocr::OcrLine { words: vec![word("Scanned", 200.0), word("words", 380.0)] }] };
+    let page = ocr::OcrPage { sharp: false, page: 0, transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0], lines: vec![ocr::OcrLine { look: None, words: vec![word("Scanned", 200.0), word("words", 380.0)] }] };
     ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap();
     let before = scan_page(&doc, pid).unwrap();
     assert!(before.lines[0].invisible);
@@ -758,10 +758,10 @@ fn recognised_text_is_sized_from_its_letters() {
 fn bold_recognised_text_is_rewritten_bold() {
     let mut doc = doc_with(&[&[]]);
     let pid = pages::page_id(&doc, 0).unwrap();
-    let page = ocr::OcrPage {
+    let page = ocr::OcrPage { sharp: false,
         page: 0,
         transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0],
-        lines: vec![ocr::OcrLine { words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
+        lines: vec![ocr::OcrLine { look: None, words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
     };
     ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap();
     let scan = scan_page(&doc, pid).unwrap();
@@ -778,10 +778,10 @@ fn bold_recognised_text_is_rewritten_bold() {
 fn recognised_page() -> (Document, lopdf::ObjectId, usize) {
     let mut doc = doc_with(&[&[]]);
     let pid = pages::page_id(&doc, 0).unwrap();
-    let page = ocr::OcrPage {
+    let page = ocr::OcrPage { sharp: false,
         page: 0,
         transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0],
-        lines: vec![ocr::OcrLine { words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
+        lines: vec![ocr::OcrLine { look: None, words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
     };
     ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap();
     let id = scan_page(&doc, pid).unwrap().lines.iter().find(|l| l.invisible).unwrap().id;
@@ -832,4 +832,52 @@ fn moved_recognised_text_keeps_its_width() {
     let l = after.lines.iter().find(|l| l.text == "Upload").unwrap();
     // As wide as the recognised letters (60 pt here), not Helvetica's natural width.
     assert!((l.chars.last().unwrap() - width).abs() < 0.5, "{} vs {width}", l.chars.last().unwrap());
+}
+
+/// A small horizontal gradient as a repaired background, placed over (100, 400)-(160, 420).
+fn gradient_patch() -> edit::Patch {
+    use base64::Engine;
+    let img = image::RgbImage::from_fn(30, 10, |x, _| image::Rgb([(x * 8) as u8, 80, 200]));
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    edit::Patch { png: base64::engine::general_purpose::STANDARD.encode(png.into_inner()), corners: [[100.0, 400.0], [160.0, 400.0], [100.0, 420.0]] }
+}
+
+#[test]
+fn moved_recognised_text_leaves_a_repaired_background() {
+    let (mut doc, pid, id) = recognised_page();
+    let before = scan_page(&doc, pid).unwrap();
+    let look = edit::LineLook { line: id, ink: Some([1.0, 0.0, 0.0]), patch: Some(gradient_patch()), ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[id], &LineEdit { dx: 40.0, looks: vec![look], ..Default::default() }).unwrap();
+    let after = scan_page(&doc, pid).unwrap();
+    // The background is an image where the letters were, not a filled shape.
+    assert_eq!(after.images.len(), before.images.len() + 1);
+    assert_eq!(after.paths.len(), before.paths.len());
+    let im = after.images.last().unwrap();
+    assert_eq!((im.width, im.height), (30, 10));
+    assert_eq!(im.bbox().map(|v| v.round()), [100.0, 400.0, 160.0, 420.0]);
+    // The line's own ink, from its look.
+    let l = after.lines.iter().find(|l| l.text == "Upload").unwrap();
+    assert_eq!(l.color.map(|c| c.round()), [1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn sharp_recognition_draws_the_text_over_its_repaired_background() {
+    let mut doc = doc_with(&[&[]]);
+    let pid = pages::page_id(&doc, 0).unwrap();
+    let look = ocr::OcrLook { ink: Some([0.0, 0.0, 1.0]), bold: true, patch: Some(gradient_patch()) };
+    let page = ocr::OcrPage {
+        sharp: true,
+        page: 0,
+        transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0],
+        lines: vec![ocr::OcrLine { look: Some(look), words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
+    };
+    assert_eq!(ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap().0, 1);
+    let scan = scan_page(&doc, pid).unwrap();
+    let l = scan.lines.iter().find(|l| l.text == "Upload").unwrap();
+    assert!(!l.invisible, "drawn, not invisible");
+    assert!(l.bold);
+    assert_eq!(l.color.map(|c| c.round()), [0.0, 0.0, 1.0]);
+    assert!((l.chars.last().unwrap() - 60.0).abs() < 0.5, "as wide as the letters in the picture");
+    assert_eq!(scan.images.len(), 1, "the repaired background");
 }
