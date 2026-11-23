@@ -820,3 +820,16 @@ fn deleting_recognised_text_covers_it() {
     assert!(after.lines.iter().all(|l| l.text.trim().is_empty()), "no text left");
     assert_eq!(after.paths.len(), paths + 1, "the old letters are covered");
 }
+
+#[test]
+fn moved_recognised_text_keeps_its_width() {
+    let (mut doc, pid, id) = recognised_page();
+    let before = scan_page(&doc, pid).unwrap();
+    let width = *before.lines[id].chars.last().unwrap();
+    let edit = LineEdit { dx: 40.0, cover: Some([1.0, 1.0, 1.0]), ink: Some([0.0, 0.0, 0.0]), ..Default::default() };
+    edit::edit_lines(&mut doc, pid, &[id], &edit).unwrap();
+    let after = scan_page(&doc, pid).unwrap();
+    let l = after.lines.iter().find(|l| l.text == "Upload").unwrap();
+    // As wide as the recognised letters (60 pt here), not Helvetica's natural width.
+    assert!((l.chars.last().unwrap() - width).abs() < 0.5, "{} vs {width}", l.chars.last().unwrap());
+}

@@ -632,7 +632,8 @@ function PageView({
       const out: SnapBox[] = [];
       lines.forEach((l, i) => {
         const g = geo[i];
-        if (!g || except.lines?.has(l.id) || l.invisible || Math.abs(g.angle) > 0.5) return;
+        // Recognised (invisible) lines count too: they lie over letters the page shows.
+        if (!g || except.lines?.has(l.id) || Math.abs(g.angle) > 0.5) return;
         const base = (vp.convertToViewportPoint(l.origin[0], l.origin[1]) as number[])[1];
         out.push({ x0: g.bbox[0], y0: g.bbox[1], x1: g.bbox[2], y1: g.bbox[3], base });
       });

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.2 — 2026-11-23
+
+### Fixed
+- **Recognised text snaps**: text recognised in scans and pictures is a snap target like any other line, so a
+  dragged line lines up with the edges, centres and baselines of the text nearest to it there too.
+- **Moved recognised text keeps its width**: it was redrawn at Helvetica's own width and came out wider or
+  narrower than before, so it no longer lined up where it was snapped. It now keeps the width of the
+  original letters; rewritten text takes the same proportions.
+
 ## 1.7.1 — 2026-11-23
 
 ### Fixed

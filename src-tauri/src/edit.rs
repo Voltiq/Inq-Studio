@@ -1460,6 +1460,25 @@ pub fn place_text(
     opacity: f32,
     behind: bool,
 ) -> Result<Vec<String>, String> {
+    place_text_scaled(doc, page_id, text, font, size, color, anchor, angle, align, opacity, behind, 1.0)
+}
+
+/// [`place_text`] with the letters stretched or narrowed across by `th` (1 = as designed).
+#[allow(clippy::too_many_arguments)]
+pub fn place_text_scaled(
+    doc: &mut Document,
+    page_id: ObjectId,
+    text: &str,
+    font: &FontChoice,
+    size: f32,
+    color: [f32; 3],
+    anchor: (f32, f32),
+    angle: f32,
+    align: f32,
+    opacity: f32,
+    behind: bool,
+    th: f32,
+) -> Result<Vec<String>, String> {
     if text.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -1468,10 +1487,10 @@ pub fn place_text(
     let mut enc = Encoder::new(page_id);
     let chars: Vec<char> = text.replace(['\r', '\n'], " ").chars().collect();
     let items = encode_styled(&mut enc, doc, Src::Page, &chars, &vec![0; chars.len()], std::slice::from_ref(&target))?;
-    let width: f32 = items.iter().map(|it| it.enc.w / 1000.0 * size).sum();
+    let width: f32 = items.iter().map(|it| it.enc.w / 1000.0 * size).sum::<f32>() * th;
     let (s, c) = angle.to_radians().sin_cos();
     let start = (anchor.0 - c * width * align, anchor.1 - s * width * align);
-    let mut ops = emit_lines(&[(items, start)], &looks, IDENTITY, [c, s, -s, c], 1.0)?;
+    let mut ops = emit_lines(&[(items, start)], &looks, IDENTITY, [c, s, -s, c], th)?;
     if opacity < 1.0 {
         let gs = opacity_state(doc, page_id, opacity.clamp(0.02, 1.0))?;
         ops.insert(1, Operation::new("gs", vec![Object::Name(gs)]));
@@ -1530,6 +1549,12 @@ pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[Hidden
     Ok((placed, notices))
 }
 
+/// Width of text in Helvetica (Arial has the same widths), in em.
+fn helv_width(text: &str, bold: bool) -> f32 {
+    let face = if bold { crate::fonts::Std14::HelveticaBold } else { crate::fonts::Std14::Helvetica };
+    text.chars().map(|c| crate::fonts::std14_width(face, c)).sum::<f32>() / 1000.0
+}
+
 /// Rewrites, moves or deletes recognised (invisible) text so the page shows it:
 /// each line's old spot is covered in the colour around it (`edit.cover`), and
 /// unless it was deleted, its text (or the new text) is drawn visibly where it
@@ -1538,8 +1563,11 @@ pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[Hidden
 fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::Scan, ids: &[usize], hidden: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
     let cover = edit.cover.unwrap_or([1.0, 1.0, 1.0]);
     let ink = edit.ink.unwrap_or([0.0, 0.0, 0.0]);
-    let lines: Vec<([[f32; 2]; 4], [f32; 2], f32, f32, String)> =
-        hidden.iter().filter_map(|id| scan.lines.get(*id)).map(|l| (l.quad, l.origin, l.angle, l.em, l.text.clone())).collect();
+    let lines: Vec<([[f32; 2]; 4], [f32; 2], f32, f32, String, f32)> = hidden
+        .iter()
+        .filter_map(|id| scan.lines.get(*id))
+        .map(|l| (l.quad, l.origin, l.angle, l.em, l.text.clone(), l.chars.last().copied().unwrap_or(0.0)))
+        .collect();
     // The invisible words go (the visible ones replace them for searching and copying too);
     // the other lines take the edit.
     let mut enc = Encoder::new(page_id);
@@ -1550,7 +1578,7 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
     }
     let mut notices = enc.finish(doc)?;
     plan.apply(doc, page_id, scan)?;
-    for (quad, origin, angle, em, old) in lines {
+    for (quad, origin, angle, em, old, old_width) in lines {
         // A little more than the line's box, so no edge of the old letters shows.
         let centre = [(quad[0][0] + quad[2][0]) / 2.0, (quad[0][1] + quad[2][1]) / 2.0];
         let grown: Vec<[f32; 2]> = quad
@@ -1572,6 +1600,7 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
         if edit.delete {
             continue;
         }
+        let natural = helv_width(&old, edit.bold) * em;
         let text = edit.text.clone().unwrap_or(old);
         if text.trim().is_empty() {
             continue;
@@ -1583,7 +1612,10 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
             (false, bold) => FontChoice::System { family: "Arial".into(), bold, italic: false },
         };
         let at = (origin[0] + edit.dx, origin[1] + edit.dy);
-        notices.extend(place_text(doc, page_id, &text, &font, em, ink, at, angle, 0.0, 1.0, false)?);
+        // The letters in the picture are seldom as wide as Helvetica's: keep their width, so a moved line
+        // is as wide as before and lines up where it was snapped. New text takes the same proportions.
+        let th = if natural > 0.0 && old_width > 0.0 { (old_width / natural).clamp(0.5, 2.0) } else { 1.0 };
+        notices.extend(place_text_scaled(doc, page_id, &text, &font, em, ink, at, angle, 0.0, 1.0, false, th)?);
     }
     let what = if edit.delete {
         "Recognised text: the words were covered in the colour around them."
