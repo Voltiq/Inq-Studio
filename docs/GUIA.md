@@ -91,7 +91,8 @@ la herramienta de edición. Como las palabras antiguas forman parte de la imagen
 con un parche del color que hay detrás de las letras (el papel, o el botón o la imagen sobre los que están) y
 dibuja encima su texto en el color de las letras antiguas, en negrita si lo eran. El texto nuevo se compone
 en Helvetica o Arial, así que no coincidirá exactamente con el tipo de letra del escaneo. El texto reconocido
-se edita línea por línea.
+se edita línea por línea. Mover o eliminar una línea reconocida funciona igual: se cubre su lugar anterior y
+una línea movida se dibuja de nuevo donde la deje, en su propio color.
 
 ## Imágenes
 

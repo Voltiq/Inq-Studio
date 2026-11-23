@@ -90,7 +90,9 @@ erkannte Zeile doppelklicken. Weil die alten Wörter Teil des Bildes sind, deckt
 Farbe hinter den Buchstaben ab (Papier, oder die Schaltfläche oder das Bild, auf dem sie stehen) und
 zeichnet Ihren Text in der Farbe der alten Buchstaben darüber, fett, wenn sie fett waren. Der neue Text
 wird in Helvetica oder Arial gesetzt und trifft die Schrift des Scans daher nicht genau. Erkannter Text wird Zeile
-für Zeile bearbeitet.
+für Zeile bearbeitet. Verschieben oder Löschen einer erkannten Zeile funktioniert genauso: Ihre alte Stelle
+wird abgedeckt, und eine verschobene Zeile wird dort, wo Sie sie ablegen, in ihrer eigenen Farbe neu
+gezeichnet.
 
 ## Bilder
 

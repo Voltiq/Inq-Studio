@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.1 — 2026-11-23
+
+### Fixed
+- **Moving recognised text**: moving a line of text recognised in a scan or picture moved only its invisible
+  text layer, so it showed without colour while the old letters stayed in the picture. Now the old spot is
+  covered in the colour around it, and the line is drawn where you put it, in the colour and weight of the
+  old letters. Deleting a recognised line covers its letters too. Afterwards it is ordinary text that can be
+  edited again.
+
 ## 1.7.0 — 2026-11-20
 
 ### Added

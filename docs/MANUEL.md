@@ -97,7 +97,9 @@ ligne d’un cache de la couleur qui se trouve derrière les lettres (le papier,
 lesquels elles sont posées) et dessine votre texte par-dessus dans la couleur des anciennes lettres, en gras
 si elles l’étaient. Le
 nouveau texte est composé en Helvetica ou en Arial ; il ne correspondra donc pas exactement à la police de
-la numérisation. Le texte reconnu se modifie ligne par ligne.
+la numérisation. Le texte reconnu se modifie ligne par ligne. Déplacer ou supprimer une ligne reconnue fonctionne de même : son
+ancien emplacement est recouvert, et une ligne déplacée est redessinée là où vous la posez, dans sa propre
+couleur.
 
 ## Images
 

@@ -81,7 +81,8 @@ can be selected, and also rewritten: double-click a recognised line with the edi
 words are part of the picture, Inq Studio covers the line with a patch in the colour behind the letters
 (the paper, or the button or picture they sit on) and draws your text over it in the colour of the old
 letters, bold if they were bold. The new text is set in Helvetica or Arial, so it will not match the scan's
-typeface exactly. Recognised text is edited one line at a time.
+typeface exactly. Recognised text is edited one line at a time. Moving or deleting a recognised line works
+the same way: its old spot is covered, and a moved line is drawn again where you put it, in its own colour.
 
 ## Images
 

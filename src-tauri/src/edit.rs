@@ -918,10 +918,12 @@ fn plan_line(
 /// Edits one or more lines on a page in a single change.
 pub fn edit_lines(doc: &mut Document, page_id: ObjectId, ids: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
     let scan = scan_page(doc, page_id)?;
-    // Recognised text on a scan is invisible: rewriting it must change what the page shows.
-    let hidden = |id: &usize| scan.lines.get(*id).map(|l| l.invisible).unwrap_or(false);
-    if edit.text.is_some() && !ids.is_empty() && ids.iter().all(hidden) {
-        return rewrite_scanned(doc, page_id, &scan, ids, edit);
+    // Recognised text lies invisibly over the pixels of a scan or picture: rewriting, moving or
+    // deleting it must change what the page shows, not just the invisible layer.
+    let hidden: Vec<usize> = ids.iter().copied().filter(|id| scan.lines.get(*id).map(|l| l.invisible).unwrap_or(false)).collect();
+    let moved = edit.dx.abs() > 1e-3 || edit.dy.abs() > 1e-3;
+    if !hidden.is_empty() && (edit.text.is_some() || edit.delete || moved) {
+        return rewrite_scanned(doc, page_id, &scan, ids, &hidden, edit);
     }
     if edit.reflow && ids.len() == 1 && edit.size.is_none() && edit.font.is_none() && edit.color.is_none() {
         if let (Some(text), Some(line)) = (&edit.text, scan.lines.get(ids[0])) {
@@ -1264,7 +1266,7 @@ fn rewrap(
         old_styles.push(s);
     }
     let old: Vec<char> = block.text.chars().skip(lo).take(hi - lo).collect();
-    let new: Vec<char> = text.replace("\r\n", "\n").replace('\r', "\n").chars().collect();
+    let new: Vec<char> = text.replace("\n", "\n").replace('\r', "\n").chars().collect();
     let styles = map_styles(&old, &old_styles, &new);
 
     // Sizes are normalised to the first run's text matrix, which the new text uses.
@@ -1399,7 +1401,7 @@ pub fn add_text(doc: &mut Document, page_id: ObjectId, spec: &NewText) -> Result
         return Err("There is no text to add.".into());
     }
     let scan = scan_page(doc, page_id)?;
-    let text = spec.text.replace("\r\n", "\n");
+    let text = spec.text.replace("\n", "\n");
     let target = Target::Choice(spec.font.clone());
     let looks = vec![Look { size: spec.size, fill: Fill::Rgb(spec.color[0], spec.color[1], spec.color[2]), tc: 0.0 }];
     let mut enc = Encoder::new(page_id);
@@ -1528,18 +1530,27 @@ pub fn place_hidden_words(doc: &mut Document, page_id: ObjectId, words: &[Hidden
     Ok((placed, notices))
 }
 
-/// Rewrites recognised text on a scanned page. The words of the scan are
-/// pixels, so the old line is covered in the colour of the paper and the new
-/// text is drawn over it, visibly, at the size the line was recognised at.
-fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::Scan, ids: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
-    let text = edit.text.clone().unwrap_or_default();
+/// Rewrites, moves or deletes recognised (invisible) text so the page shows it:
+/// each line's old spot is covered in the colour around it (`edit.cover`), and
+/// unless it was deleted, its text (or the new text) is drawn visibly where it
+/// now belongs, in the colour (`edit.ink`) and weight of the old letters. Lines
+/// of ordinary text in the same selection change as usual, in the same step.
+fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::Scan, ids: &[usize], hidden: &[usize], edit: &LineEdit) -> Result<Vec<String>, String> {
     let cover = edit.cover.unwrap_or([1.0, 1.0, 1.0]);
     let ink = edit.ink.unwrap_or([0.0, 0.0, 0.0]);
-    let lines: Vec<([[f32; 2]; 4], [f32; 2], f32, f32)> = ids.iter().filter_map(|id| scan.lines.get(*id)).map(|l| (l.quad, l.origin, l.angle, l.em)).collect();
-    // The invisible words go: the new text replaces them for searching and copying too.
-    edit_lines(doc, page_id, ids, &LineEdit { delete: true, ..Default::default() })?;
-    let mut notices = Vec::new();
-    for (quad, origin, angle, em) in lines {
+    let lines: Vec<([[f32; 2]; 4], [f32; 2], f32, f32, String)> =
+        hidden.iter().filter_map(|id| scan.lines.get(*id)).map(|l| (l.quad, l.origin, l.angle, l.em, l.text.clone())).collect();
+    // The invisible words go (the visible ones replace them for searching and copying too);
+    // the other lines take the edit.
+    let mut enc = Encoder::new(page_id);
+    let mut plan = Plan::default();
+    let gone = LineEdit { delete: true, ..Default::default() };
+    for &id in ids {
+        plan_line(doc, page_id, scan, id, if hidden.contains(&id) { &gone } else { edit }, &mut enc, &mut plan)?;
+    }
+    let mut notices = enc.finish(doc)?;
+    plan.apply(doc, page_id, scan)?;
+    for (quad, origin, angle, em, old) in lines {
         // A little more than the line's box, so no edge of the old letters shows.
         let centre = [(quad[0][0] + quad[2][0]) / 2.0, (quad[0][1] + quad[2][1]) / 2.0];
         let grown: Vec<[f32; 2]> = quad
@@ -1558,6 +1569,10 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
         ops.push(Operation::new("f", vec![]));
         ops.push(Operation::new("Q", vec![]));
         add_page_ops(doc, page_id, ops, false)?;
+        if edit.delete {
+            continue;
+        }
+        let text = edit.text.clone().unwrap_or(old);
         if text.trim().is_empty() {
             continue;
         }
@@ -1567,9 +1582,17 @@ fn rewrite_scanned(doc: &mut Document, page_id: ObjectId, scan: &crate::interp::
             (true, true) => FontChoice::Standard { name: "Helvetica-Bold".into() },
             (false, bold) => FontChoice::System { family: "Arial".into(), bold, italic: false },
         };
-        notices.extend(place_text(doc, page_id, &text, &font, em, ink, (origin[0], origin[1]), angle, 0.0, 1.0, false)?);
+        let at = (origin[0] + edit.dx, origin[1] + edit.dy);
+        notices.extend(place_text(doc, page_id, &text, &font, em, ink, at, angle, 0.0, 1.0, false)?);
     }
-    notices.insert(0, "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.".to_string());
+    let what = if edit.delete {
+        "Recognised text: the words were covered in the colour around them."
+    } else if edit.text.is_none() {
+        "Recognised text: the words were covered in the colour around them and drawn again where you moved them."
+    } else {
+        "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it."
+    };
+    notices.insert(0, what.to_string());
     notices.dedup();
     Ok(notices)
 }

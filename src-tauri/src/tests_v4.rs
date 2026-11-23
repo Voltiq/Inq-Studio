@@ -773,3 +773,50 @@ fn bold_recognised_text_is_rewritten_bold() {
     assert!(l.bold, "set in a bold font: {}", l.font_name);
     assert_eq!(l.color.map(|c| (c * 100.0).round()), [100.0, 100.0, 100.0]);
 }
+
+/// A page with one recognised (invisible) line, "Upload", in a picture.
+fn recognised_page() -> (Document, lopdf::ObjectId, usize) {
+    let mut doc = doc_with(&[&[]]);
+    let pid = pages::page_id(&doc, 0).unwrap();
+    let page = ocr::OcrPage {
+        page: 0,
+        transform: [2.0, 0.0, 0.0, -2.0, 0.0, 1684.0],
+        lines: vec![ocr::OcrLine { words: vec![ocr::OcrWord { text: "Upload".into(), x: 200.0, y: 300.0, w: 120.0, h: 40.0 }] }],
+    };
+    ocr::add_text_layer(&mut doc, pid, &page, "en").unwrap();
+    let id = scan_page(&doc, pid).unwrap().lines.iter().find(|l| l.invisible).unwrap().id;
+    (doc, pid, id)
+}
+
+#[test]
+fn moving_recognised_text_covers_the_old_spot_and_draws_it_visibly() {
+    let (mut doc, pid, id) = recognised_page();
+    let before = scan_page(&doc, pid).unwrap();
+    let old = before.lines[id].origin;
+    let paths = before.paths.len();
+    let edit = LineEdit { dx: 50.0, dy: -30.0, cover: Some([0.1, 0.3, 0.9]), ink: Some([1.0, 1.0, 1.0]), ..Default::default() };
+    let notices = edit::edit_lines(&mut doc, pid, &[id], &edit).unwrap();
+    assert!(notices[0].contains("where you moved them"), "{notices:?}");
+    let after = scan_page(&doc, pid).unwrap();
+    // No invisible copy is left behind, and the text is visible where it was moved, in the colour of the old letters.
+    assert!(after.lines.iter().all(|l| !l.invisible), "the invisible words are gone");
+    let l = after.lines.iter().find(|l| l.text == "Upload").expect("visible text");
+    assert!((l.origin[0] - (old[0] + 50.0)).abs() < 0.5 && (l.origin[1] - (old[1] - 30.0)).abs() < 0.5, "{:?} vs {:?}", l.origin, old);
+    assert_eq!(l.color.map(|c| (c * 100.0).round()), [100.0, 100.0, 100.0]);
+    // The old spot is covered by a filled shape.
+    assert_eq!(after.paths.len(), paths + 1);
+    // From now on it is ordinary text: it can be moved again like any line.
+    edit::edit_lines(&mut doc, pid, &[l.id], &LineEdit { dx: 10.0, ..Default::default() }).unwrap();
+    let again = scan_page(&doc, pid).unwrap();
+    assert_eq!(again.paths.len(), paths + 1, "an ordinary move covers nothing");
+}
+
+#[test]
+fn deleting_recognised_text_covers_it() {
+    let (mut doc, pid, id) = recognised_page();
+    let paths = scan_page(&doc, pid).unwrap().paths.len();
+    edit::edit_lines(&mut doc, pid, &[id], &LineEdit { delete: true, cover: Some([0.1, 0.3, 0.9]), ..Default::default() }).unwrap();
+    let after = scan_page(&doc, pid).unwrap();
+    assert!(after.lines.iter().all(|l| l.text.trim().is_empty()), "no text left");
+    assert_eq!(after.paths.len(), paths + 1, "the old letters are covered");
+}

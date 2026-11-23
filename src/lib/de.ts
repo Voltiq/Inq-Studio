@@ -491,6 +491,10 @@ export const de: Record<string, string> = {
   "Install…": "Installieren…",
   "Windows downloads the language pack and asks for administrator rights. It is a few megabytes and stays installed for every program.":
     "Windows lädt das Sprachpaket herunter und fragt nach Administratorrechten. Es ist wenige Megabyte groß und bleibt für alle Programme installiert.",
+  "Recognised text: the words were covered in the colour around them.":
+    "Erkannter Text: Die Wörter wurden in der Farbe ihrer Umgebung abgedeckt.",
+  "Recognised text: the words were covered in the colour around them and drawn again where you moved them.":
+    "Erkannter Text: Die Wörter wurden in der Farbe ihrer Umgebung abgedeckt und dort neu gezeichnet, wohin Sie sie verschoben haben.",
   "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.":
     "Dies ist ein Scan: Die alte Zeile wurde in der Farbe des Papiers abgedeckt und der neue Text darüber gezeichnet.",
 

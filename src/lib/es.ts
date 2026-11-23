@@ -469,6 +469,10 @@ export const es: Record<string, string> = {
   "Add a language to Windows": "Añadir un idioma a Windows",
   "Install…": "Instalar…",
   "Windows downloads the language pack and asks for administrator rights. It is a few megabytes and stays installed for every program.": "Windows descarga el paquete de idioma y pide derechos de administrador. Ocupa unos pocos megabytes y queda instalado para todos los programas.",
+  "Recognised text: the words were covered in the colour around them.":
+    "Texto reconocido: las palabras se cubrieron con el color que las rodea.",
+  "Recognised text: the words were covered in the colour around them and drawn again where you moved them.":
+    "Texto reconocido: las palabras se cubrieron con el color que las rodea y se dibujaron de nuevo donde las movió.",
   "This is a scan: the old line was covered in the colour of the paper and the new text drawn over it.": "Esto es un escaneo: la línea antigua se cubrió con el color del papel y el texto nuevo se dibujó encima.",
 
   // ----- Title bar, tour, manual -----
